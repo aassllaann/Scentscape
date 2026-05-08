@@ -24,6 +24,9 @@ export interface Perfume {
   moodScores: Record<string, number>;
   intensityCurve: number[]; // 5个值，0–1
   visualParams: VisualParams;
+  imageUrl?: string;
+  description?: string;
+  notes?: string[];
 }
 
 export interface FamilyMapEntry {

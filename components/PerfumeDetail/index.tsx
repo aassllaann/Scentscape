@@ -128,14 +128,50 @@ function PerfumeView({ perfume }: { perfume: Perfume }) {
         </div>
       </div>
 
-      {/* 时间轴 */}
-      <div className="flex-1 overflow-y-auto px-5 pb-4">
-        <div className="text-xs text-white/40 mb-3 font-medium">香气时间轴</div>
-        <SillageTimeline />
+      {/* 滚动区：描述 + 香调 + 时间轴 + 情绪标签 */}
+      <div className="flex-1 overflow-y-auto px-5 pb-6 space-y-5">
+
+        {/* 香调成分 */}
+        {perfume.notes && perfume.notes.length > 0 && (
+          <div>
+            <div className="text-xs text-white/40 mb-2 font-medium tracking-wide uppercase">Notes</div>
+            <div className="flex flex-wrap gap-1.5">
+              {perfume.notes.map((note) => (
+                <span
+                  key={note}
+                  className="text-xs rounded-full px-2.5 py-0.5"
+                  style={{
+                    background: `${perfume.visualParams.accentColor}22`,
+                    border: `1px solid ${perfume.visualParams.accentColor}55`,
+                    color: 'rgba(255,255,255,0.75)',
+                  }}
+                >
+                  {note}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 描述文字 */}
+        {perfume.description && (
+          <div>
+            <div className="text-xs text-white/40 mb-2 font-medium tracking-wide uppercase">Description</div>
+            <p className="text-xs text-white/60 leading-relaxed">
+              {perfume.description}
+            </p>
+          </div>
+        )}
+
+        {/* 时间轴 */}
+        <div>
+          <div className="text-xs text-white/40 mb-3 font-medium">香气时间轴</div>
+          <SillageTimeline />
+        </div>
 
         {/* 情绪标签 */}
         {perfume.moodTags.length > 0 && (
-          <div className="mt-5">
+          <div>
             <div className="text-xs text-white/40 mb-2 font-medium">情绪标签</div>
             <div className="flex flex-wrap gap-1.5">
               {perfume.moodTags.map((tag) => (

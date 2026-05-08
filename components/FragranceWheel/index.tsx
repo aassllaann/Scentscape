@@ -52,12 +52,20 @@ export default function FragranceWheel({ perfumes }: Props) {
     [dispatch]
   );
 
+  const handlePerfumeClick = useCallback(
+    (perfume: Perfume) => {
+      dispatch({ type: 'SET_PERFUME', payload: perfume });
+    },
+    [dispatch]
+  );
+
   useFragranceWheel(svgRef, {
     perfumes,
     selectedFamily,
     selectedPerfume,
     onFamilyHover: handleFamilyHover,
     onFamilyClick: handleFamilyClick,
+    onPerfumeClick: handlePerfumeClick,
   });
 
   // 当前悬停族群的香水（最多3支）
@@ -71,8 +79,8 @@ export default function FragranceWheel({ perfumes }: Props) {
     <div className="relative flex items-center justify-center w-full flex-1">
       <svg
         ref={svgRef}
-        className="w-full h-full max-w-[420px] max-h-[420px]"
-        style={{ filter: 'drop-shadow(0 0 20px rgba(0,0,0,0.4))' }}
+        className="w-full h-full max-w-[520px] max-h-[520px]"
+        style={{ filter: 'drop-shadow(0 0 20px rgba(0,0,0,0.4))', overflow: 'visible', cursor: 'grab' }}
       />
 
       {/* Hover Tooltip */}
