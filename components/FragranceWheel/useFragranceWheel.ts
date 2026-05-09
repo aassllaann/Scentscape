@@ -29,7 +29,7 @@ export const FAMILY_LABELS: Record<string, string> = {
   Floral: '花香调',
 };
 
-// 族群颜色
+// 族群主色
 export const FAMILY_COLORS: Record<string, string> = {
   Oriental: '#8B4513',
   Woody: '#4A7A30',
@@ -42,13 +42,79 @@ export const FAMILY_COLORS: Record<string, string> = {
   Floral: '#DDA0DD',
 };
 
+// 细分香调定义（每个大类下的亚类）
+export const SUBFAMILIES: Record<string, Array<{ id: string; label: string; color: string }>> = {
+  Oriental: [
+    { id: 'oriental-vanilla',  label: '香草东方', color: '#A05828' },
+    { id: 'soft-oriental',     label: '柔东方',   color: '#C07040' },
+    { id: 'oriental-spicy',    label: '辛香东方', color: '#6B3015' },
+    { id: 'oriental-floral',   label: '花香东方', color: '#904060' },
+  ],
+  Woody: [
+    { id: 'woody-aromatic',    label: '木质芳香', color: '#527A38' },
+    { id: 'mossy-woods',       label: '苔藓木质', color: '#3A6B2A' },
+    { id: 'dry-woods',         label: '干木质',   color: '#7B8A30' },
+    { id: 'sandalwood',        label: '檀木调',   color: '#8B7355' },
+  ],
+  Fougere: [
+    { id: 'classic-fougere',   label: '经典馥奇', color: '#8B7A55' },
+    { id: 'soft-fougere',      label: '柔馥奇',   color: '#6B5A37' },
+    { id: 'fresh-fougere',     label: '清新馥奇', color: '#6B8A5A' },
+  ],
+  Leather: [
+    { id: 'leather-smoky',     label: '烟熏皮革', color: '#4A4570' },
+    { id: 'leather-suede',     label: '麂皮革',   color: '#5C3D6B' },
+    { id: 'tobacco-leather',   label: '烟草皮革', color: '#332850' },
+  ],
+  Gourmand: [
+    { id: 'gourmand-vanilla',  label: '香草美食', color: '#D4853A' },
+    { id: 'gourmand-caramel',  label: '焦糖美食', color: '#B86020' },
+    { id: 'gourmand-spicy',    label: '辛香美食', color: '#A84838' },
+  ],
+  Citrus: [
+    { id: 'citrus-aromatic',   label: '柑橘芳香', color: '#FFD166' },
+    { id: 'citrus-floral',     label: '柑橘花香', color: '#FFB040' },
+    { id: 'hesperidic',        label: '西柚清柑', color: '#E8A018' },
+  ],
+  Fresh: [
+    { id: 'fresh-green',       label: '绿叶清新', color: '#7FBF7F' },
+    { id: 'fresh-aromatic',    label: '芳香清新', color: '#6BAF5A' },
+    { id: 'fresh-spice',       label: '辛香清新', color: '#9FCF7F' },
+  ],
+  Aquatic: [
+    { id: 'aquatic-marine',    label: '海洋水生', color: '#4A90C4' },
+    { id: 'aquatic-oceanic',   label: '远洋水生', color: '#3A78B0' },
+    { id: 'aqua-fresh',        label: '水感清新', color: '#5AAFD4' },
+  ],
+  Floral: [
+    { id: 'floral-soft',       label: '柔花香',   color: '#DDA0DD' },
+    { id: 'floral-fresh',      label: '清新花香', color: '#CC80CC' },
+    { id: 'floral-oriental',   label: '东方花香', color: '#BB70AA' },
+    { id: 'floral-aldehyde',   label: '醛香花香', color: '#EEBFEE' },
+  ],
+};
+
+// 从 subfamilyId 反查中文名的快捷 map
+export const SUBFAMILY_LABELS: Record<string, string> = Object.values(SUBFAMILIES)
+  .flat()
+  .reduce<Record<string, string>>((acc, s) => { acc[s.id] = s.label; return acc; }, {});
+
+interface SubfamilyArcDatum {
+  family: string;
+  subfamilyId: string;
+  subfamilyLabel: string;
+  subfamilyColor: string;
+  startAngle: number;
+  endAngle: number;
+}
+
 interface UseFragranceWheelOptions {
   perfumes: Perfume[];
   selectedFamily: string | null;
-  selectedPerfume: Perfume | null;
-  onFamilyHover: (family: string | null, x: number, y: number) => void;
+  selectedSubfamily: string | null;
+  onFamilyHover: (family: string | null, x: number, y: number, subfamilyId?: string) => void;
   onFamilyClick: (family: string) => void;
-  onPerfumeClick: (perfume: Perfume) => void;
+  onSubfamilyClick: (family: string, subfamilyId: string) => void;
 }
 
 export function useFragranceWheel(
@@ -62,18 +128,20 @@ export function useFragranceWheel(
     if (typeof window === 'undefined') return;
     if (!svgRef.current) return;
 
-    // 动态导入 D3（避免 SSR 问题）
     import('d3').then((d3) => {
       const svg = d3.select(svgRef.current);
-      const { perfumes, onFamilyHover, onFamilyClick } = optionsRef.current;
+      const { perfumes, onFamilyHover, onFamilyClick, onSubfamilyClick } = optionsRef.current;
 
       svg.selectAll('*').remove();
 
-      const size = 400;
+      const size = 560;
       const r = size / 2;
-      const innerR = r * 0.35;
-      const outerR = r * 0.85;
-      const outerHoverR = r * 0.92;
+
+      // 三层半径：中心圆 → 大类环 → 细分环
+      const innerR      = r * 0.35;   // 中心圆外缘
+      const familyMidR  = r * 0.57;   // 大类环外缘（兼内层）
+      const outerR      = r * 0.85;   // 细分环外缘
+      const outerHoverR = r * 0.92;   // hover/选中时外扩
 
       const g = svg
         .attr('viewBox', `-${r} -${r} ${size} ${size}`)
@@ -83,115 +151,168 @@ export function useFragranceWheel(
       const pie = d3.pie<string>().value(() => 1).sort(null);
       const arcs = pie(FAMILY_ORDER as unknown as string[]);
 
-      const arcPath = d3.arc<d3.PieArcDatum<string>>()
+      // ── 大类弧（内环）──────────────────────────────────────────────
+      const familyArcPath = d3.arc<d3.PieArcDatum<string>>()
         .innerRadius(innerR)
-        .outerRadius(outerR);
+        .outerRadius(familyMidR);
 
-      const arcHover = d3.arc<d3.PieArcDatum<string>>()
+      const familyArcHover = d3.arc<d3.PieArcDatum<string>>()
         .innerRadius(innerR)
-        .outerRadius(outerHoverR);
+        .outerRadius(familyMidR + 6);
 
-      const arcLabel = d3.arc<d3.PieArcDatum<string>>()
-        .innerRadius((innerR + outerR) / 2)
-        .outerRadius((innerR + outerR) / 2);
+      const familyArcLabel = d3.arc<d3.PieArcDatum<string>>()
+        .innerRadius((innerR + familyMidR) / 2)
+        .outerRadius((innerR + familyMidR) / 2);
 
-      // 绘制弧段
-      const segments = g
-        .selectAll('path.arc-segment')
+      const familySegments = g
+        .selectAll('path.family-segment')
         .data(arcs)
         .enter()
         .append('path')
-        .attr('class', 'arc-segment')
-        .attr('d', arcPath)
+        .attr('class', 'family-segment')
+        .attr('d', familyArcPath)
         .attr('fill', (d) => FAMILY_COLORS[d.data] ?? '#888')
-        .attr('fill-opacity', 0.85)
-        .attr('stroke', 'rgba(0,0,0,0.3)')
+        .attr('fill-opacity', 0.9)
+        .attr('stroke', 'rgba(0,0,0,0.35)')
         .attr('stroke-width', 1.5)
-        .style('cursor', 'pointer')
-        .style('transition', 'd 0.2s ease, fill-opacity 0.2s ease');
+        .style('cursor', 'pointer');
 
-      segments
+      familySegments
         .on('mouseover', function (event, d) {
-          d3.select(this)
-            .attr('d', arcHover(d) ?? '')
-            .attr('fill-opacity', 1);
+          d3.select(this).attr('d', familyArcHover(d) ?? '').attr('fill-opacity', 1);
           onFamilyHover(d.data, event.clientX, event.clientY);
         })
         .on('mousemove', function (event, d) {
           onFamilyHover(d.data, event.clientX, event.clientY);
         })
-        .on('mouseout', function (event, d) {
+        .on('mouseout', function (_, d) {
           const isSelected = d.data === optionsRef.current.selectedFamily;
           d3.select(this)
-            .attr('d', isSelected ? (arcHover(d) ?? '') : (arcPath(d) ?? ''))
-            .attr('fill-opacity', isSelected ? 1 : 0.85)
-            .attr('stroke', isSelected ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.3)')
+            .attr('d', isSelected ? (familyArcHover(d) ?? '') : (familyArcPath(d) ?? ''))
+            .attr('fill-opacity', isSelected ? 1 : 0.9)
+            .attr('stroke', isSelected ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.35)')
             .attr('stroke-width', isSelected ? 2.5 : 1.5);
           onFamilyHover(null, 0, 0);
         })
-        .on('click', function (event, d) {
-          onFamilyClick(d.data);
-        });
+        .on('click', (_, d) => onFamilyClick(d.data));
 
-      // 弧形文字标签
-      const defs = svg.append('defs');
-
-      arcs.forEach((d) => {
-        const mid = (d.startAngle + d.endAngle) / 2;
-        const centroid = arcLabel.centroid(d);
-        const pathId = `label-path-${d.data}`;
-
-        defs
-          .append('path')
-          .attr('id', pathId)
-          .attr('d', arcPath(d));
-      });
-
-      g.selectAll('text.arc-label')
+      // 大类文字标签（居中于内环）
+      g.selectAll('text.family-label')
         .data(arcs)
         .enter()
         .append('text')
-        .attr('class', 'arc-label')
-        .style('font-size', '11px')
-        .style('font-weight', '600')
-        .style('fill', 'rgba(255,255,255,0.9)')
+        .attr('class', 'family-label')
+        .style('font-size', '10px')
+        .style('font-weight', '700')
+        .style('fill', 'rgba(255,255,255,0.92)')
         .style('pointer-events', 'none')
         .attr('text-anchor', 'middle')
         .attr('dy', '0.35em')
         .attr('transform', (d) => {
-          const c = arcLabel.centroid(d);
+          const c = familyArcLabel.centroid(d);
           return `translate(${c[0]},${c[1]})`;
         })
         .text((d) => FAMILY_LABELS[d.data] ?? d.data);
 
-      // 中心圆（选中信息显示区）
+      // ── 细分香调弧（外环）──────────────────────────────────────────
+      const subfamilyArcs: SubfamilyArcDatum[] = [];
+      arcs.forEach((familyArc) => {
+        const family = familyArc.data;
+        const subs = SUBFAMILIES[family] ?? [];
+        if (subs.length === 0) return;
+        const span = familyArc.endAngle - familyArc.startAngle;
+        const subSpan = span / subs.length;
+        subs.forEach((sub, i) => {
+          subfamilyArcs.push({
+            family,
+            subfamilyId: sub.id,
+            subfamilyLabel: sub.label,
+            subfamilyColor: sub.color,
+            startAngle: familyArc.startAngle + i * subSpan,
+            endAngle: familyArc.startAngle + (i + 1) * subSpan,
+          });
+        });
+      });
+
+      const subfamilyArcPath = d3.arc<SubfamilyArcDatum>()
+        .innerRadius(familyMidR + 2)
+        .outerRadius(outerR)
+        .startAngle((d) => d.startAngle)
+        .endAngle((d) => d.endAngle)
+        .padAngle(0.012);
+
+      const subfamilyArcHover = d3.arc<SubfamilyArcDatum>()
+        .innerRadius(familyMidR + 2)
+        .outerRadius(outerHoverR)
+        .startAngle((d) => d.startAngle)
+        .endAngle((d) => d.endAngle)
+        .padAngle(0.012);
+
+      const subfamilyLabelArc = d3.arc<SubfamilyArcDatum>()
+        .innerRadius((familyMidR + outerR) / 2)
+        .outerRadius((familyMidR + outerR) / 2)
+        .startAngle((d) => d.startAngle)
+        .endAngle((d) => d.endAngle);
+
+      const subSegments = g
+        .selectAll('path.subfamily-segment')
+        .data(subfamilyArcs)
+        .enter()
+        .append('path')
+        .attr('class', 'subfamily-segment')
+        .attr('d', subfamilyArcPath)
+        .attr('fill', (d) => d.subfamilyColor)
+        .attr('fill-opacity', 0.82)
+        .attr('stroke', 'rgba(0,0,0,0.25)')
+        .attr('stroke-width', 1)
+        .style('cursor', 'pointer');
+
+      subSegments
+        .on('mouseover', function (event, d) {
+          d3.select(this).attr('d', subfamilyArcHover(d) ?? '').attr('fill-opacity', 1);
+          onFamilyHover(d.family, event.clientX, event.clientY, d.subfamilyId);
+        })
+        .on('mousemove', function (event, d) {
+          onFamilyHover(d.family, event.clientX, event.clientY, d.subfamilyId);
+        })
+        .on('mouseout', function (_, d) {
+          const isSelected = d.family === optionsRef.current.selectedFamily;
+          d3.select(this)
+            .attr('d', isSelected ? (subfamilyArcHover(d) ?? '') : (subfamilyArcPath(d) ?? ''))
+            .attr('fill-opacity', isSelected ? 1 : 0.82)
+            .attr('stroke', isSelected ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.25)');
+          onFamilyHover(null, 0, 0);
+        })
+        .on('click', (_, d) => onSubfamilyClick(d.family, d.subfamilyId));
+
+      // 细分标签（沿弧旋转）
+      g.selectAll('text.subfamily-label')
+        .data(subfamilyArcs)
+        .enter()
+        .append('text')
+        .attr('class', 'subfamily-label')
+        .style('font-size', '8px')
+        .style('fill', 'rgba(255,255,255,0.80)')
+        .style('pointer-events', 'none')
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'middle')
+        .attr('transform', (d) => {
+          const c = subfamilyLabelArc.centroid(d);
+          const midAngle = (d.startAngle + d.endAngle) / 2;
+          const rotDeg = (midAngle - Math.PI / 2) * (180 / Math.PI);
+          const flip = midAngle > Math.PI;
+          return `translate(${c[0]},${c[1]}) rotate(${flip ? rotDeg + 180 : rotDeg})`;
+        })
+        .text((d) => d.subfamilyLabel);
+
+      // ── 中心圆 ──────────────────────────────────────────────────────
       g.append('circle')
         .attr('r', innerR * 0.95)
         .attr('fill', 'rgba(0,0,0,0.4)')
         .attr('stroke', 'rgba(255,255,255,0.15)')
         .attr('stroke-width', 1);
 
-      // 中心文字占位符（由 React 控制，此处仅绘制空白）
-      g.append('text')
-        .attr('id', 'wheel-center-name')
-        .attr('text-anchor', 'middle')
-        .attr('dy', '-0.3em')
-        .style('font-size', '12px')
-        .style('fill', 'rgba(255,255,255,0.9)')
-        .style('pointer-events', 'none')
-        .text('');
-
-      g.append('text')
-        .attr('id', 'wheel-center-brand')
-        .attr('text-anchor', 'middle')
-        .attr('dy', '1.1em')
-        .style('font-size', '10px')
-        .style('fill', 'rgba(255,255,255,0.6)')
-        .style('pointer-events', 'none')
-        .text('点击选择香水');
-
-      // ── D3 缩放 / 平移 ──────────────────────────────────────────
-      // 用非空断言拿到正确类型，让 .call(zoom) 编译通过
+      // ── 缩放 / 平移 ─────────────────────────────────────────────────
       const svgNode = svgRef.current!;
       const svgTyped = d3.select<SVGSVGElement, unknown>(svgNode);
       const root = svg.select<SVGGElement>('g.wheel-root');
@@ -199,243 +320,82 @@ export function useFragranceWheel(
       const zoom = d3.zoom<SVGSVGElement, unknown>()
         .scaleExtent([0.25, 10])
         .on('start', () => { svgNode.style.cursor = 'grabbing'; })
-        .on('zoom',  (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
+        .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
           root.attr('transform', event.transform.toString());
         })
-        .on('end',   () => { svgNode.style.cursor = 'grab'; });
+        .on('end', () => { svgNode.style.cursor = 'grab'; });
 
       svgTyped.call(zoom)
-        .on('dblclick.zoom', null)           // 禁掉 D3 默认双击放大
-        .on('dblclick', () => {              // 双击重置视角
+        .on('dblclick.zoom', null)
+        .on('dblclick', () => {
           svgTyped.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
         });
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options.perfumes]);
 
-  // 更新选中族群的弧段高亮
+  // 更新选中大类的弧段高亮（内环 + 外环）
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (!svgRef.current) return;
 
     import('d3').then((d3) => {
       const { selectedFamily } = optionsRef.current;
+      const svg = d3.select(svgRef.current);
 
-      const size = 400;
+      const size = 560;
       const r = size / 2;
-      const innerR = r * 0.35;
-      const outerR = r * 0.85;
-      const outerSelectedR = r * 0.92;
+      const innerR     = r * 0.35;
+      const familyMidR = r * 0.57;
+      const outerR     = r * 0.85;
+      const outerSelR  = r * 0.92;
 
       const pie = d3.pie<string>().value(() => 1).sort(null);
       const arcs = pie(FAMILY_ORDER as unknown as string[]);
-
-      const arcPath = d3.arc<d3.PieArcDatum<string>>()
-        .innerRadius(innerR)
-        .outerRadius(outerR);
-
-      const arcSelected = d3.arc<d3.PieArcDatum<string>>()
-        .innerRadius(innerR)
-        .outerRadius(outerSelectedR);
-
       const arcMap = new Map(arcs.map((a) => [a.data, a]));
 
-      d3.select(svgRef.current)
-        .selectAll<SVGPathElement, d3.PieArcDatum<string>>('path.arc-segment')
+      const familyArcPath = d3.arc<d3.PieArcDatum<string>>()
+        .innerRadius(innerR).outerRadius(familyMidR);
+      const familyArcSel = d3.arc<d3.PieArcDatum<string>>()
+        .innerRadius(innerR).outerRadius(familyMidR + 6);
+
+      svg.selectAll<SVGPathElement, d3.PieArcDatum<string>>('path.family-segment')
         .each(function (d) {
           const isSelected = d.data === selectedFamily;
-          const arcDatum = arcMap.get(d.data) ?? d;
+          const datum = arcMap.get(d.data) ?? d;
           d3.select(this)
-            .transition()
-            .duration(250)
-            .attr('d', isSelected ? (arcSelected(arcDatum) ?? '') : (arcPath(arcDatum) ?? ''))
-            .attr('fill-opacity', isSelected ? 1 : 0.85)
-            .attr('stroke', isSelected ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.3)')
+            .transition().duration(250)
+            .attr('d', isSelected ? (familyArcSel(datum) ?? '') : (familyArcPath(datum) ?? ''))
+            .attr('fill-opacity', isSelected ? 1 : 0.9)
+            .attr('stroke', isSelected ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.35)')
             .attr('stroke-width', isSelected ? 2.5 : 1.5);
         });
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options.selectedFamily]);
 
-  // 渲染选中香调的香水圆点节点
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (!svgRef.current) return;
+      // 外环：选中家族的所有细分格子也跟着外扩
+      const subfamilyArcPath = d3.arc<SubfamilyArcDatum>()
+        .innerRadius(familyMidR + 2).outerRadius(outerR)
+        .startAngle((d) => d.startAngle).endAngle((d) => d.endAngle).padAngle(0.012);
+      const subfamilyArcSel = d3.arc<SubfamilyArcDatum>()
+        .innerRadius(familyMidR + 2).outerRadius(outerSelR)
+        .startAngle((d) => d.startAngle).endAngle((d) => d.endAngle).padAngle(0.012);
 
-    import('d3').then((d3) => {
-      const { selectedFamily, perfumes, onPerfumeClick } = optionsRef.current;
-      const svg = d3.select(svgRef.current);
-
-      // 清除旧圆点层
-      svg.selectAll('g.perfume-dots-layer').remove();
-
-      if (!selectedFamily) return;
-
-      const familyPerfumes = perfumes.filter((p) => p.fragranceFamily === selectedFamily);
-      if (familyPerfumes.length === 0) return;
-
-      const color = FAMILY_COLORS[selectedFamily] ?? '#888';
-      const r = 200; // 与主绘制保持一致
-
-      // 基于香调名生成确定性随机（相同香调每次位置一致）
-      const seededRand = (n: number) => {
-        const x = Math.sin(n + 1) * 10000;
-        return x - Math.floor(x);
-      };
-      const fSeed = selectedFamily.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-
-      const minR = r * 1.18;  // 轮盘外缘最小距离
-      const maxR = r * 3.8;   // 最远扩散半径（溢出视口产生屏幕填充感）
-
-      const layer = svg.select<SVGGElement>('g.wheel-root')
-        .append('g').attr('class', 'perfume-dots-layer');
-
-      const nodes = layer
-        .selectAll<SVGGElement, Perfume>('g.perfume-dot-node')
-        .data(familyPerfumes, (d) => d.id)
-        .enter()
-        .append('g')
-        .attr('class', 'perfume-dot-node')
-        .attr('transform', (d, i) => {
-          const ra = seededRand(fSeed * 17 + i * 7);      // 角度 0-2π
-          const rr = seededRand(fSeed * 17 + i * 7 + 1);  // 半径 0-1
-          const angle = ra * Math.PI * 2;
-          // sqrt 分布让点更均匀散布到外圈而非堆在中心
-          const radius = minR + Math.sqrt(rr) * (maxR - minR);
-          return `translate(${radius * Math.cos(angle)}, ${radius * Math.sin(angle)})`;
-        })
-        .style('cursor', 'pointer');
-
-      nodes.each(function (d, i) {
-        const nodeG = d3.select(this);
-
-        // 内层 g：负责浮动动画，与外层定位分离
-        const floatG = nodeG.append('g').attr('class', 'dot-float');
-
-        // 光晕
-        floatG
-          .append('circle')
-          .attr('class', 'dot-aura')
-          .attr('r', 30)
-          .attr('fill', color)
-          .attr('fill-opacity', 0.12)
-          .attr('stroke', 'none');
-
-        // 主圆点（入场动画）
-        floatG
-          .append('circle')
-          .attr('class', 'main-dot')
-          .attr('r', 0)
-          .attr('fill', color)
-          .attr('fill-opacity', 0.85)
-          .attr('stroke', 'rgba(255,255,255,0.55)')
-          .attr('stroke-width', 2)
-          .transition()
-          .duration(400)
-          .delay(i * 50)
-          .attr('r', 16);
-
-        // 香水名称标签
-        floatG
-          .append('text')
-          .attr('y', 30)
-          .attr('text-anchor', 'middle')
-          .style('font-size', '11px')
-          .style('fill', `${color}ee`)
-          .style('pointer-events', 'none')
-          .text(d.name.length > 16 ? d.name.slice(0, 16) + '\u2026' : d.name);
-
-        // SMIL 浮动动画（在内层 g 上，不干扰外层定位 transform）
-        const floatEl = floatG.node();
-        if (floatEl) {
-          const anim = document.createElementNS('http://www.w3.org/2000/svg', 'animateTransform');
-          const amp = 4 + (i % 4);
-          const dur = 1.8 + (i % 5) * 0.25;
-          anim.setAttribute('attributeName', 'transform');
-          anim.setAttribute('type', 'translate');
-          anim.setAttribute('values', `0,${amp}; 0,${-amp}; 0,${amp}`);
-          anim.setAttribute('dur', `${dur}s`);
-          anim.setAttribute('repeatCount', 'indefinite');
-          floatEl.appendChild(anim);
-        }
-
-        // Hover 效果
-        nodeG
-          .on('mouseover', () => {
-            nodeG
-              .select<SVGCircleElement>('.main-dot')
-              .attr('fill-opacity', 1)
-              .attr('r', 22)
-              .attr('stroke', 'rgba(255,255,255,0.9)')
-              .attr('stroke-width', 2.5);
-            nodeG
-              .select<SVGCircleElement>('.dot-aura')
-              .attr('fill-opacity', 0.3);
-          })
-          .on('mouseout', () => {
-            nodeG
-              .select<SVGCircleElement>('.main-dot')
-              .attr('fill-opacity', 0.85)
-              .attr('r', 16)
-              .attr('stroke', 'rgba(255,255,255,0.55)')
-              .attr('stroke-width', 2);
-            nodeG
-              .select<SVGCircleElement>('.dot-aura')
-              .attr('fill-opacity', 0.12);
-          })
-          .on('click', (event) => {
-            event.stopPropagation();
-            onPerfumeClick(d);
-          });
-      });
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options.selectedFamily, options.perfumes]);
-
-  // 更新圆点选中高亮（不重建整个点层）
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (!svgRef.current) return;
-
-    import('d3').then((d3) => {
-      const { selectedPerfume } = optionsRef.current;
-
-      d3.select(svgRef.current)
-        .selectAll<SVGGElement, Perfume>('g.perfume-dot-node')
+      const { selectedSubfamily } = optionsRef.current;
+      svg.selectAll<SVGPathElement, SubfamilyArcDatum>('path.subfamily-segment')
         .each(function (d) {
-          const isSelected = selectedPerfume?.id === d.id;
+          const familyActive = d.family === selectedFamily;
+          // 有细分选中时：选中的细分高亮，同家族其他细分半透明，其余暗淡
+          const isSubSel = !!selectedSubfamily && d.subfamilyId === selectedSubfamily;
+          const dimmed   = familyActive && !!selectedSubfamily && !isSubSel;
+          const expand   = isSubSel || (familyActive && !selectedSubfamily);
           d3.select(this)
-            .select<SVGCircleElement>('.main-dot')
-            .transition()
-            .duration(200)
-            .attr('r', isSelected ? 22 : 16)
-            .attr('fill-opacity', isSelected ? 1 : 0.85)
-            .attr('stroke', isSelected ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.55)')
-            .attr('stroke-width', isSelected ? 3 : 2);
-          d3.select(this)
-            .select<SVGCircleElement>('.dot-aura')
-            .transition()
-            .duration(200)
-            .attr('r', isSelected ? 42 : 30)
-            .attr('fill-opacity', isSelected ? 0.32 : 0.12);
+            .transition().duration(250)
+            .attr('d', expand ? (subfamilyArcSel(d) ?? '') : (subfamilyArcPath(d) ?? ''))
+            .attr('fill-opacity', isSubSel ? 1 : dimmed ? 0.35 : familyActive ? 0.9 : 0.82)
+            .attr('stroke', isSubSel ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.25)')
+            .attr('stroke-width', isSubSel ? 1.5 : 1);
         });
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options.selectedPerfume]);
+  }, [options.selectedFamily, options.selectedSubfamily]);
 
-  // 单独更新中心文字（不重建整个 D3 图）
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (!svgRef.current) return;
-
-    import('d3').then((d3) => {
-      const { selectedPerfume } = optionsRef.current;
-      d3.select(svgRef.current)
-        .select('#wheel-center-name')
-        .text(selectedPerfume ? selectedPerfume.name : '');
-      d3.select(svgRef.current)
-        .select('#wheel-center-brand')
-        .text(selectedPerfume ? selectedPerfume.brand : '点击选择香水');
-    });
-  }, [options.selectedPerfume]);
 }

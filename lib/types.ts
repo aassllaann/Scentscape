@@ -50,3 +50,43 @@ export interface NoteStageResult {
   heartNotes: NoteWithOpacity[];
   baseNotes: NoteWithOpacity[];
 }
+
+// ── AI Visual ────────────────────────────────────────────────────────────────
+
+export interface AIColorStop {
+  hex: string;    // e.g. "#C8A26B"
+  label: string;  // material name, e.g. "sandalwood amber"
+  weight: number; // 0–1, sum ~1
+}
+
+export interface AICanvasHints {
+  technique: 'particles' | 'waves' | 'smoke' | 'aurora' | 'crystals' | 'organic';
+  speed: 'slow' | 'medium' | 'fast';
+  density: 'sparse' | 'medium' | 'dense';
+  backgroundGradient: string; // CSS gradient string
+}
+
+// Agent 1 output: visual concept (no code)
+export interface AIVisualConcept {
+  perfumeId: string;
+  palette: AIColorStop[];
+  dominantMood: string;
+  motionStyle: string;
+  visualMetaphors: string[];
+  canvasHints: AICanvasHints;
+  description: string;    // 中文诗意描述
+  descriptionEn: string;  // English
+}
+
+// Agent 2 output: runnable canvas HTML
+export interface AIVisualRender {
+  perfumeId: string;
+  html: string;         // complete self-contained HTML
+  generatedAt: number;  // Date.now()
+}
+
+// Combined (cached in sessionStorage)
+export interface AIVisualResult {
+  concept: AIVisualConcept;
+  render: AIVisualRender;
+}

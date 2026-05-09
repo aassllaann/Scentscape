@@ -1,12 +1,13 @@
 'use client';
 
 import { useRef, useState, useCallback } from 'react';
-import { useAppDispatch, useSelectedFamily, useSelectedPerfume } from '@/lib/store';
+import { useAppDispatch, useSelectedFamily, useSelectedSubfamily } from '@/lib/store';
 import type { Perfume } from '@/lib/types';
 import {
   useFragranceWheel,
   FAMILY_LABELS,
   FAMILY_COLORS,
+  SUBFAMILY_LABELS,
 } from './useFragranceWheel';
 
 interface Props {
@@ -16,6 +17,7 @@ interface Props {
 interface TooltipState {
   visible: boolean;
   family: string;
+  subfamilyId?: string;
   x: number;
   y: number;
 }
@@ -24,7 +26,7 @@ export default function FragranceWheel({ perfumes }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const dispatch = useAppDispatch();
   const selectedFamily = useSelectedFamily();
-  const selectedPerfume = useSelectedPerfume();
+  const selectedSubfamily = useSelectedSubfamily();
 
   const [tooltip, setTooltip] = useState<TooltipState>({
     visible: false,
@@ -34,9 +36,9 @@ export default function FragranceWheel({ perfumes }: Props) {
   });
 
   const handleFamilyHover = useCallback(
-    (family: string | null, x: number, y: number) => {
+    (family: string | null, x: number, y: number, subfamilyId?: string) => {
       if (family) {
-        setTooltip({ visible: true, family, x, y });
+        setTooltip({ visible: true, family, subfamilyId, x, y });
       } else {
         setTooltip((t) => ({ ...t, visible: false }));
       }
@@ -52,9 +54,11 @@ export default function FragranceWheel({ perfumes }: Props) {
     [dispatch]
   );
 
-  const handlePerfumeClick = useCallback(
-    (perfume: Perfume) => {
-      dispatch({ type: 'SET_PERFUME', payload: perfume });
+  const handleSubfamilyClick = useCallback(
+    (family: string, subfamilyId: string) => {
+      dispatch({ type: 'SET_FAMILY', payload: family });
+      dispatch({ type: 'SET_SUBFAMILY', payload: subfamilyId });
+      dispatch({ type: 'SET_PERFUME', payload: null });
     },
     [dispatch]
   );
@@ -62,24 +66,30 @@ export default function FragranceWheel({ perfumes }: Props) {
   useFragranceWheel(svgRef, {
     perfumes,
     selectedFamily,
-    selectedPerfume,
+    selectedSubfamily,
     onFamilyHover: handleFamilyHover,
     onFamilyClick: handleFamilyClick,
-    onPerfumeClick: handlePerfumeClick,
+    onSubfamilyClick: handleSubfamilyClick,
   });
 
-  // 当前悬停族群的香水（最多3支）
+  // 悬停时预览该香调/细分下的香水（最多3支）
   const previewPerfumes = tooltip.visible
-    ? perfumes
-        .filter((p) => p.fragranceFamily === tooltip.family)
-        .slice(0, 3)
+    ? (() => {
+        const bySubfamily = tooltip.subfamilyId
+          ? perfumes.filter((p) => p.subfamilyId === tooltip.subfamilyId)
+          : [];
+        const source = bySubfamily.length > 0
+          ? bySubfamily
+          : perfumes.filter((p) => p.fragranceFamily === tooltip.family);
+        return source.slice(0, 3);
+      })()
     : [];
 
   return (
     <div className="relative flex items-center justify-center w-full flex-1">
       <svg
         ref={svgRef}
-        className="w-full h-full max-w-[520px] max-h-[520px]"
+        className="w-full h-full max-w-[680px] max-h-[680px]"
         style={{ filter: 'drop-shadow(0 0 20px rgba(0,0,0,0.4))', overflow: 'visible', cursor: 'grab' }}
       />
 
@@ -87,25 +97,33 @@ export default function FragranceWheel({ perfumes }: Props) {
       {tooltip.visible && (
         <div
           className="fixed z-30 pointer-events-none"
-          style={{
-            left: tooltip.x + 16,
-            top: tooltip.y - 20,
-          }}
+          style={{ left: tooltip.x + 16, top: tooltip.y - 20 }}
         >
           <div
-            className="rounded-xl px-3 py-2 shadow-xl min-w-[140px]"
+            className="rounded-xl px-3 py-2 shadow-xl min-w-[150px]"
             style={{
-              background: 'rgba(15,15,15,0.85)',
+              background: 'rgba(15,15,15,0.88)',
               backdropFilter: 'blur(12px)',
-              border: `1px solid ${FAMILY_COLORS[tooltip.family]}44`,
+              border: `1px solid ${FAMILY_COLORS[tooltip.family]}55`,
             }}
           >
             <div
-              className="text-xs font-bold mb-1.5"
+              className="text-xs font-bold leading-5"
               style={{ color: FAMILY_COLORS[tooltip.family] }}
             >
               {FAMILY_LABELS[tooltip.family]}
             </div>
+
+            {tooltip.subfamilyId && (
+              <div
+                className="text-[10px] mb-1.5 opacity-80"
+                style={{ color: FAMILY_COLORS[tooltip.family] }}
+              >
+                {SUBFAMILY_LABELS[tooltip.subfamilyId]}
+              </div>
+            )}
+            {!tooltip.subfamilyId && <div className="mb-1" />}
+
             {previewPerfumes.map((p) => (
               <div key={p.id} className="text-xs text-white/70 leading-5">
                 {p.name}

@@ -6,17 +6,20 @@ import type { Perfume } from './types';
 interface AppState {
   selectedPerfume: Perfume | null;
   selectedFamily: string | null;
+  selectedSubfamily: string | null;
   timelineProgress: number;
 }
 
 type Action =
   | { type: 'SET_PERFUME'; payload: Perfume | null }
   | { type: 'SET_FAMILY'; payload: string | null }
+  | { type: 'SET_SUBFAMILY'; payload: string | null }
   | { type: 'SET_PROGRESS'; payload: number };
 
 const initialState: AppState = {
   selectedPerfume: null,
   selectedFamily: null,
+  selectedSubfamily: null,
   timelineProgress: 0,
 };
 
@@ -25,7 +28,9 @@ function reducer(state: AppState, action: Action): AppState {
     case 'SET_PERFUME':
       return { ...state, selectedPerfume: action.payload, timelineProgress: 0 };
     case 'SET_FAMILY':
-      return { ...state, selectedFamily: action.payload };
+      return { ...state, selectedFamily: action.payload, selectedSubfamily: null };
+    case 'SET_SUBFAMILY':
+      return { ...state, selectedSubfamily: action.payload };
     case 'SET_PROGRESS':
       return { ...state, timelineProgress: action.payload };
     default:
@@ -59,6 +64,10 @@ export function useSelectedPerfume() {
 
 export function useSelectedFamily() {
   return useAppContext().state.selectedFamily;
+}
+
+export function useSelectedSubfamily() {
+  return useAppContext().state.selectedSubfamily;
 }
 
 export function useTimelineProgress() {
