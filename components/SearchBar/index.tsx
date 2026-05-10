@@ -3,26 +3,36 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import type { Perfume } from '@/lib/types';
 import { useAppDispatch } from '@/lib/store';
-import { FAMILY_LABELS } from '@/components/FragranceWheel/useFragranceWheel';
+import { FAMILY_LABELS } from '@/lib/fragranceData';
 
-interface Props {
-  perfumes: Perfume[];
-}
-
-export default function SearchBar({ perfumes }: Props) {
+export default function SearchBar() {
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [results, setResults] = useState<Perfume[]>([]);
   const dispatch = useAppDispatch();
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
-  const results = query.trim().length > 0
-    ? perfumes.filter((p) => {
-        const q = query.toLowerCase();
-        return p.name.toLowerCase().includes(q) || p.brand.toLowerCase().includes(q);
-      }).slice(0, 7)
-    : [];
+  // Debounced search via API
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) { setResults([]); return; }
+
+    const timer = setTimeout(() => {
+      abortRef.current?.abort();
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
+
+      fetch(`/api/perfumes?q=${encodeURIComponent(q)}`, { signal: ctrl.signal })
+        .then((r) => r.json())
+        .then((data: Perfume[]) => { setResults(data); setIsOpen(true); })
+        .catch(() => {/* aborted */});
+    }, 200);
+
+    return () => clearTimeout(timer);
+  }, [query]);
 
   const selectPerfume = useCallback(
     (perfume: Perfume) => {
@@ -31,6 +41,7 @@ export default function SearchBar({ perfumes }: Props) {
       setQuery('');
       setIsOpen(false);
       setActiveIndex(-1);
+      setResults([]);
     },
     [dispatch]
   );
@@ -60,8 +71,8 @@ export default function SearchBar({ perfumes }: Props) {
           ref={inputRef}
           type="text"
           value={query}
-          onChange={(e) => { setQuery(e.target.value); setIsOpen(true); setActiveIndex(-1); }}
-          onFocus={() => setIsOpen(true)}
+          onChange={(e) => { setQuery(e.target.value); setActiveIndex(-1); }}
+          onFocus={() => { if (results.length > 0) setIsOpen(true); }}
           onKeyDown={handleKeyDown}
           placeholder="按名称或品牌搜索…"
           className="w-full outline-none"

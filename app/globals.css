@@ -11,9 +11,9 @@
   --gold-faint:     rgba(201,169,110,0.10);
   --glass:          rgba(255,255,255,0.055);
   --glass-border:   rgba(255,255,255,0.08);
-  --text-primary:   rgba(245,240,232,0.92);
-  --text-secondary: rgba(245,240,232,0.45);
-  --text-muted:     rgba(245,240,232,0.22);
+  --text-primary:   rgba(245,240,232,0.95);
+  --text-secondary: rgba(245,240,232,0.68);
+  --text-muted:     rgba(245,240,232,0.46);
 }
 
 @theme inline {

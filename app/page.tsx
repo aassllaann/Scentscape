@@ -1,14 +1,12 @@
-'use client';
-
 import FragranceWheel from '@/components/FragranceWheel';
 import PerfumeDetail from '@/components/PerfumeDetail';
 import SearchBar from '@/components/SearchBar';
-import perfumesData from '@/data/perfumes.json';
-import type { Perfume } from '@/lib/types';
-
-const perfumes = perfumesData as unknown as Perfume[];
+import { getPerfumes, getPreviews } from '@/lib/perfumeServer';
 
 export default function Home() {
+  const totalCount = getPerfumes().length;
+  const { family: familyPreviews, subfamily: subfamilyPreviews } = getPreviews();
+
   return (
     <div className="flex h-full overflow-hidden">
       {/* 左列：标题 + 搜索 + 香调轮 */}
@@ -24,7 +22,7 @@ export default function Home() {
               Scentscape
             </h1>
             <p className="label-caps mt-1.5" style={{ letterSpacing: '0.22em' }}>
-              Olfactory Atlas · {perfumes.length.toLocaleString()} fragrances
+              Olfactory Atlas · {totalCount.toLocaleString()} fragrances
             </p>
           </div>
 
@@ -45,15 +43,15 @@ export default function Home() {
 
         {/* 搜索栏 */}
         <div className="flex-shrink-0">
-          <SearchBar perfumes={perfumes} />
+          <SearchBar />
         </div>
 
         {/* 香调轮 */}
-        <FragranceWheel perfumes={perfumes} />
+        <FragranceWheel familyPreviews={familyPreviews} subfamilyPreviews={subfamilyPreviews} />
       </div>
 
       {/* 右侧详情面板 */}
-      <PerfumeDetail perfumes={perfumes} />
+      <PerfumeDetail />
     </div>
   );
 }

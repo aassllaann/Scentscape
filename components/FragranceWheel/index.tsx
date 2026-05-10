@@ -2,16 +2,13 @@
 
 import { useRef, useState, useCallback } from 'react';
 import { useAppDispatch, useSelectedFamily, useSelectedSubfamily } from '@/lib/store';
-import type { Perfume } from '@/lib/types';
-import {
-  useFragranceWheel,
-  FAMILY_LABELS,
-  FAMILY_COLORS,
-  SUBFAMILY_LABELS,
-} from './useFragranceWheel';
+import { FAMILY_LABELS, FAMILY_COLORS, SUBFAMILY_LABELS } from '@/lib/fragranceData';
+import type { SlimPreview } from '@/lib/perfumeServer';
+import { useFragranceWheel } from './useFragranceWheel';
 
 interface Props {
-  perfumes: Perfume[];
+  familyPreviews: Record<string, SlimPreview[]>;
+  subfamilyPreviews: Record<string, SlimPreview[]>;
 }
 
 interface TooltipState {
@@ -22,7 +19,7 @@ interface TooltipState {
   y: number;
 }
 
-export default function FragranceWheel({ perfumes }: Props) {
+export default function FragranceWheel({ familyPreviews, subfamilyPreviews }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const dispatch = useAppDispatch();
   const selectedFamily = useSelectedFamily();
@@ -64,7 +61,6 @@ export default function FragranceWheel({ perfumes }: Props) {
   );
 
   useFragranceWheel(svgRef, {
-    perfumes,
     selectedFamily,
     selectedSubfamily,
     onFamilyHover: handleFamilyHover,
@@ -74,15 +70,9 @@ export default function FragranceWheel({ perfumes }: Props) {
 
   // 悬停时预览该香调/细分下的香水（最多3支）
   const previewPerfumes = tooltip.visible
-    ? (() => {
-        const bySubfamily = tooltip.subfamilyId
-          ? perfumes.filter((p) => p.subfamilyId === tooltip.subfamilyId)
-          : [];
-        const source = bySubfamily.length > 0
-          ? bySubfamily
-          : perfumes.filter((p) => p.fragranceFamily === tooltip.family);
-        return source.slice(0, 3);
-      })()
+    ? (tooltip.subfamilyId
+        ? (subfamilyPreviews[tooltip.subfamilyId] ?? familyPreviews[tooltip.family] ?? [])
+        : (familyPreviews[tooltip.family] ?? []))
     : [];
 
   return (

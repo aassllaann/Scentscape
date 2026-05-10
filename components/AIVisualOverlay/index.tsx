@@ -1,14 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import type { AIVisualConcept, AIVisualRender } from '@/lib/types';
+import type { AIVisualConcept } from '@/lib/types';
 import type { VisualizePhase } from '@/hooks/useAIVisualize';
 
 interface Props {
   phase: VisualizePhase;
   concept: AIVisualConcept | null;
-  render: AIVisualRender | null;
   perfumeName: string;
   onClose: () => void;
 }
@@ -16,448 +15,344 @@ interface Props {
 const FONT_DATA: React.CSSProperties = { fontFamily: 'var(--font-data)', letterSpacing: '0.12em' };
 const FONT_DISPLAY: React.CSSProperties = { fontFamily: 'var(--font-display)', fontStyle: 'italic' };
 
-// ── Hex → RGB ─────────────────────────────────────────────────────────────────
-function hexRgb(hex: string): [number, number, number] {
-  const h = hex.replace('#', '');
-  const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
+// ── Seeded PRNG (Mulberry32) ───────────────────────────────────────────────────
+function mulberry32(seed: number) {
+  return () => {
+    seed = (seed + 0x6D2B79F5) | 0;
+    let z = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    z = (z + Math.imul(z ^ (z >>> 7), 61 | z)) ^ z;
+    return ((z ^ (z >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace('#', '').padEnd(6, '0');
+  const n = parseInt(h.slice(0, 6), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-// ── Speed multiplier ──────────────────────────────────────────────────────────
-function speedFactor(s: 'slow' | 'medium' | 'fast') {
-  return s === 'slow' ? 0.35 : s === 'fast' ? 1.8 : 1.0;
+// Lift dark colors so they remain luminous (not muddy)
+function liftColor([r, g, b]: [number, number, number], lift = 0.35): [number, number, number] {
+  return [
+    Math.min(255, r + (255 - r) * lift) | 0,
+    Math.min(255, g + (255 - g) * lift) | 0,
+    Math.min(255, b + (255 - b) * lift) | 0,
+  ];
 }
 
-// ── Density count ─────────────────────────────────────────────────────────────
-function densityCount(d: 'sparse' | 'medium' | 'dense', base: number) {
-  return Math.round(base * (d === 'sparse' ? 0.45 : d === 'dense' ? 1.8 : 1.0));
-}
-
-// ── Preview Canvas: renders a dynamic animation from concept hints ────────────
-function PreviewCanvas({ concept }: { concept: AIVisualConcept }) {
+// ── Aura Canvas ───────────────────────────────────────────────────────────────
+//
+// Full-screen atmospheric visualization:
+// Large, overlapping radial-gradient auras floating in Lissajous paths.
+// Rendered at ×0.2 scale on an offscreen canvas → upscaled to fill the screen.
+// CSS filter: blur + saturate adds the final dreamy, gauze-like finish.
+// ──────────────────────────────────────────────────────────────────────────────
+function AuraCanvas({ concept }: { concept: AIVisualConcept }) {
+  const wrapRef   = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  const startAnimation = useCallback((canvas: HTMLCanvasElement, concept: AIVisualConcept) => {
-    const ctx = canvas.getContext('2d')!;
-    const { technique, speed, density } = concept.canvasHints;
-    const colors = concept.palette.map((p) => p.hex);
-    const sf = speedFactor(speed);
-    let frameId = 0;
-    let t = 0;
-
-    function resize() {
-      canvas.width  = window.innerWidth;
-      canvas.height = window.innerHeight;
-    }
-    resize();
-    window.addEventListener('resize', resize);
-
-    // ── particles ──────────────────────────────────────────────────────────────
-    if (technique === 'particles') {
-      const count = densityCount(density, 80);
-      const particles = Array.from({ length: count }, () => ({
-        x: Math.random() * canvas.width,
-        y: Math.random() * canvas.height,
-        r: 1.5 + Math.random() * 4,
-        vx: (Math.random() - 0.5) * sf,
-        vy: (Math.random() - 0.5) * sf,
-        color: colors[Math.floor(Math.random() * colors.length)],
-        life: Math.random(),
-        dLife: (0.003 + Math.random() * 0.005) * sf,
-      }));
-
-      function draw() {
-        ctx.fillStyle = 'rgba(7,7,15,0.18)';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        for (const p of particles) {
-          p.x += p.vx; p.y += p.vy; p.life += p.dLife;
-          if (p.life > 1) { p.life = 0; p.x = Math.random() * canvas.width; p.y = Math.random() * canvas.height; }
-          const opacity = Math.sin(p.life * Math.PI);
-          const [r, g, b] = hexRgb(p.color);
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-          ctx.shadowColor = p.color; ctx.shadowBlur = p.r * 4;
-          ctx.fillStyle = `rgba(${r},${g},${b},${opacity * 0.85})`;
-          ctx.fill();
-          ctx.shadowBlur = 0;
-          if (p.x < 0) p.x = canvas.width; if (p.x > canvas.width) p.x = 0;
-          if (p.y < 0) p.y = canvas.height; if (p.y > canvas.height) p.y = 0;
-        }
-        t += 0.008 * sf;
-        frameId = requestAnimationFrame(draw);
-      }
-      draw();
-    }
-
-    // ── waves ─────────────────────────────────────────────────────────────────
-    else if (technique === 'waves') {
-      const bands = densityCount(density, 6);
-
-      function draw() {
-        ctx.fillStyle = 'rgba(7,7,15,0.25)';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        for (let i = 0; i < bands; i++) {
-          const color = colors[i % colors.length];
-          const [r, g, b] = hexRgb(color);
-          const phase = (i / bands) * Math.PI * 2;
-          const freq  = 0.004 + i * 0.001;
-          const amp   = (canvas.height * 0.06) + i * 8;
-          const yBase = canvas.height * (0.2 + (i / bands) * 0.65);
-          const opacity = 0.12 + (i % 2) * 0.08;
-          ctx.beginPath();
-          ctx.moveTo(0, yBase);
-          for (let x = 0; x <= canvas.width; x += 3) {
-            const y = yBase + Math.sin(x * freq + t * sf + phase) * amp
-                             + Math.sin(x * freq * 1.7 + t * sf * 0.6 + phase) * amp * 0.4;
-            ctx.lineTo(x, y);
-          }
-          ctx.lineTo(canvas.width, canvas.height);
-          ctx.lineTo(0, canvas.height);
-          ctx.closePath();
-          ctx.fillStyle = `rgba(${r},${g},${b},${opacity})`;
-          ctx.fill();
-        }
-        t += 0.012 * sf;
-        frameId = requestAnimationFrame(draw);
-      }
-      draw();
-    }
-
-    // ── aurora ────────────────────────────────────────────────────────────────
-    else if (technique === 'aurora') {
-      const bands = densityCount(density, 5);
-
-      function draw() {
-        ctx.fillStyle = 'rgba(7,7,15,0.12)';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        for (let i = 0; i < bands; i++) {
-          const color = colors[i % colors.length];
-          const [r, g, b] = hexRgb(color);
-          const yCenter = canvas.height * (0.15 + (i / bands) * 0.6);
-          const amp = canvas.height * (0.06 + Math.sin(t * 0.3 + i) * 0.03);
-          const grad = ctx.createLinearGradient(0, yCenter - amp * 2, 0, yCenter + amp * 2);
-          grad.addColorStop(0,   `rgba(${r},${g},${b},0)`);
-          grad.addColorStop(0.4, `rgba(${r},${g},${b},0.18)`);
-          grad.addColorStop(0.5, `rgba(${r},${g},${b},0.28)`);
-          grad.addColorStop(0.6, `rgba(${r},${g},${b},0.18)`);
-          grad.addColorStop(1,   `rgba(${r},${g},${b},0)`);
-          ctx.beginPath();
-          ctx.moveTo(0, yCenter);
-          for (let x = 0; x <= canvas.width; x += 4) {
-            const turbulence = Math.sin(x * 0.003 + t * sf + i * 1.3)
-                             + Math.sin(x * 0.007 + t * sf * 0.7 + i) * 0.4;
-            ctx.lineTo(x, yCenter + turbulence * amp);
-          }
-          ctx.lineTo(canvas.width, yCenter + amp * 2);
-          ctx.lineTo(0, yCenter + amp * 2);
-          ctx.closePath();
-          ctx.fillStyle = grad;
-          ctx.fill();
-        }
-        t += 0.006 * sf;
-        frameId = requestAnimationFrame(draw);
-      }
-      draw();
-    }
-
-    // ── smoke ─────────────────────────────────────────────────────────────────
-    else if (technique === 'smoke') {
-      const layers = densityCount(density, 7);
-      type Puff = { x: number; y: number; radius: number; opacity: number; vx: number; vy: number; color: string };
-      const puffs: Puff[] = Array.from({ length: layers * 3 }, (_, i) => ({
-        x: canvas.width * (0.2 + Math.random() * 0.6),
-        y: canvas.height * (0.5 + Math.random() * 0.5),
-        radius: 40 + Math.random() * 80,
-        opacity: 0.04 + Math.random() * 0.06,
-        vx: (Math.random() - 0.5) * 0.3 * sf,
-        vy: -(0.3 + Math.random() * 0.5) * sf,
-        color: colors[i % colors.length],
-      }));
-
-      function draw() {
-        ctx.fillStyle = 'rgba(7,7,15,0.05)';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        for (const p of puffs) {
-          p.x += p.vx + Math.sin(t * 0.5 + p.y * 0.01) * 0.4;
-          p.y += p.vy;
-          p.radius += 0.2 * sf;
-          p.opacity -= 0.0003 * sf;
-          if (p.opacity <= 0 || p.y < -p.radius) {
-            p.x = canvas.width * (0.2 + Math.random() * 0.6);
-            p.y = canvas.height + p.radius;
-            p.radius = 40 + Math.random() * 60;
-            p.opacity = 0.04 + Math.random() * 0.05;
-          }
-          const [r, g, b] = hexRgb(p.color);
-          const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.radius);
-          grad.addColorStop(0,   `rgba(${r},${g},${b},${p.opacity})`);
-          grad.addColorStop(1,   `rgba(${r},${g},${b},0)`);
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-          ctx.fillStyle = grad;
-          ctx.fill();
-        }
-        t += 0.01 * sf;
-        frameId = requestAnimationFrame(draw);
-      }
-      draw();
-    }
-
-    // ── crystals ──────────────────────────────────────────────────────────────
-    else if (technique === 'crystals') {
-      const count = densityCount(density, 12);
-      type Crystal = { x: number; y: number; size: number; angle: number; dAngle: number; color: string; opacity: number };
-      const crystals: Crystal[] = Array.from({ length: count }, (_, i) => ({
-        x: canvas.width  * (0.1 + Math.random() * 0.8),
-        y: canvas.height * (0.1 + Math.random() * 0.8),
-        size: 20 + Math.random() * 60,
-        angle: Math.random() * Math.PI * 2,
-        dAngle: (Math.random() - 0.5) * 0.008 * sf,
-        color: colors[i % colors.length],
-        opacity: 0.08 + Math.random() * 0.15,
-      }));
-
-      function drawPoly(x: number, y: number, sides: number, size: number, angle: number) {
-        ctx.beginPath();
-        for (let i = 0; i <= sides; i++) {
-          const a = angle + (i / sides) * Math.PI * 2;
-          const px = x + Math.cos(a) * size;
-          const py = y + Math.sin(a) * size;
-          i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
-        }
-        ctx.closePath();
-      }
-
-      function draw() {
-        ctx.fillStyle = 'rgba(7,7,15,0.15)';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        for (const c of crystals) {
-          c.angle += c.dAngle;
-          const [r, g, b] = hexRgb(c.color);
-          const pulse = 0.8 + 0.2 * Math.sin(t * sf * 1.2 + c.x * 0.01);
-          ctx.save();
-          drawPoly(c.x, c.y, 6, c.size * pulse, c.angle);
-          ctx.fillStyle = `rgba(${r},${g},${b},${c.opacity})`;
-          ctx.fill();
-          ctx.strokeStyle = `rgba(${r},${g},${b},${c.opacity * 1.5})`;
-          ctx.lineWidth = 1;
-          ctx.stroke();
-          // inner facet
-          drawPoly(c.x, c.y, 6, c.size * 0.45 * pulse, c.angle + 0.5);
-          ctx.fillStyle = `rgba(${r},${g},${b},${c.opacity * 0.6})`;
-          ctx.fill();
-          ctx.restore();
-        }
-        t += 0.01 * sf;
-        frameId = requestAnimationFrame(draw);
-      }
-      draw();
-    }
-
-    // ── organic (default) ─────────────────────────────────────────────────────
-    else {
-      const blobs = densityCount(density, 5);
-      type Blob = { x: number; y: number; r: number; phase: number; color: string };
-      const blobArr: Blob[] = Array.from({ length: blobs }, (_, i) => ({
-        x: canvas.width  * (0.15 + (i / blobs) * 0.7),
-        y: canvas.height * (0.2  + Math.random() * 0.6),
-        r: (Math.min(canvas.width, canvas.height) * 0.15) + Math.random() * 80,
-        phase: Math.random() * Math.PI * 2,
-        color: colors[i % colors.length],
-      }));
-
-      function draw() {
-        ctx.fillStyle = 'rgba(7,7,15,0.08)';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        for (const b of blobArr) {
-          const [r, g, b2] = hexRgb(b.color);
-          const wobble = 1 + 0.12 * Math.sin(t * sf + b.phase);
-          const cx = b.x + 20 * Math.sin(t * sf * 0.4 + b.phase);
-          const cy = b.y + 15 * Math.cos(t * sf * 0.3 + b.phase * 1.3);
-          const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, b.r * wobble);
-          grad.addColorStop(0,   `rgba(${r},${g},${b2},0.14)`);
-          grad.addColorStop(0.5, `rgba(${r},${g},${b2},0.06)`);
-          grad.addColorStop(1,   `rgba(${r},${g},${b2},0)`);
-          ctx.beginPath();
-          ctx.arc(cx, cy, b.r * wobble, 0, Math.PI * 2);
-          ctx.fillStyle = grad;
-          ctx.fill();
-        }
-        t += 0.008 * sf;
-        frameId = requestAnimationFrame(draw);
-      }
-      draw();
-    }
-
-    return () => {
-      cancelAnimationFrame(frameId);
-      window.removeEventListener('resize', resize);
-    };
-  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    return startAnimation(canvas, concept);
-  }, [concept, startAnimation]);
+
+    let W = window.innerWidth;
+    let H = window.innerHeight;
+    canvas.width  = W;
+    canvas.height = H;
+
+    const ctx = canvas.getContext('2d')!;
+
+    // Seeded PRNG
+    const seedNum = concept.perfumeId
+      .split('')
+      .reduce((h, c) => (Math.imul(31, h) + c.charCodeAt(0)) | 0, 0);
+    const rand = mulberry32(Math.abs(seedNum) || 42);
+
+    // Collect colors from all three note layers
+    const topHex   = concept.topLayerColors?.length   ? concept.topLayerColors   : concept.palette.slice(0, 2).map(p => p.hex);
+    const heartHex = concept.heartLayerColors?.length ? concept.heartLayerColors : concept.palette.slice(1, 3).map(p => p.hex);
+    const baseHex  = concept.baseLayerColors?.length  ? concept.baseLayerColors  : concept.palette.slice(-2).map(p => p.hex);
+
+    // Lift all colors to avoid muddiness; base notes get less lift (stay deeper)
+    const topRgbs   = topHex.map(h => liftColor(hexToRgb(h), 0.45));
+    const heartRgbs = heartHex.map(h => liftColor(hexToRgb(h), 0.30));
+    const baseRgbs  = baseHex.map(h => liftColor(hexToRgb(h), 0.15));
+    const allRgbs   = [...topRgbs, ...heartRgbs, ...baseRgbs];
+
+    // ── Background color: deeply tinted average of base notes ────────────────
+    const bgR = (baseRgbs.reduce((s, c) => s + c[0], 0) / baseRgbs.length * 0.08) | 0;
+    const bgG = (baseRgbs.reduce((s, c) => s + c[1], 0) / baseRgbs.length * 0.08) | 0;
+    const bgB = (baseRgbs.reduce((s, c) => s + c[2], 0) / baseRgbs.length * 0.08) | 0;
+
+    // ── Aura blob layout ──────────────────────────────────────────────────────
+    // Grid: 3 × 3 cells. Blobs fill cells with random offsets so every corner
+    // is covered and there are no gaps.
+    type AuraBlob = {
+      cellX: number; cellY: number;        // grid cell coords (0–1)
+      wanderX: number; wanderY: number;    // wander amplitude (normalized)
+      freqX: number; freqY: number;        // Lissajous freq
+      phX: number; phY: number;            // initial phase
+      speed: number;                       // rad/frame
+      r: number;                           // base radius (normalized to shorter side)
+      pulseAmp: number; pulsePhase: number; // breathing
+      rgb: [number, number, number];
+      alpha: number;
+    };
+
+    const GRID_COLS = 3;
+    const GRID_ROWS = 3;
+    const blobs: AuraBlob[] = [];
+
+    for (let row = 0; row < GRID_ROWS; row++) {
+      for (let col = 0; col < GRID_COLS; col++) {
+        const i = row * GRID_COLS + col;
+        blobs.push({
+          // Center of grid cell
+          cellX: (col + 0.5) / GRID_COLS + (rand() - 0.5) * 0.18,
+          cellY: (row + 0.5) / GRID_ROWS + (rand() - 0.5) * 0.14,
+          wanderX: 0.10 + rand() * 0.12,
+          wanderY: 0.08 + rand() * 0.10,
+          freqX: 1 + (rand() < 0.5 ? 1 : 2),
+          freqY: 1 + (rand() < 0.5 ? 2 : 1),
+          phX:  rand() * Math.PI * 2,
+          phY:  rand() * Math.PI * 2,
+          speed: 0.0028 + rand() * 0.0022,
+          // Large enough to span well beyond a single cell → guaranteed overlap
+          r:    0.45 + rand() * 0.20,
+          pulseAmp:   0.04 + rand() * 0.06,
+          pulsePhase: rand() * Math.PI * 2,
+          rgb:   allRgbs[i % allRgbs.length],
+          alpha: 0.55 + rand() * 0.25,
+        });
+      }
+    }
+
+    // ── Offscreen canvas at 1/5 resolution ───────────────────────────────────
+    const SCALE = 5;
+    let RW = Math.ceil(W / SCALE);
+    let RH = Math.ceil(H / SCALE);
+    const off = document.createElement('canvas');
+    off.width = RW; off.height = RH;
+    const oc = off.getContext('2d')!;
+
+    let t = 0;
+    let frameId: number;
+
+    function frame() {
+      // ── Fill background (tinted base color — never pure black) ──────────────
+      oc.fillStyle = `rgb(${bgR},${bgG},${bgB})`;
+      oc.fillRect(0, 0, RW, RH);
+
+      // ── Draw aura blobs with 'screen' blending for luminous mixing ───────────
+      oc.globalCompositeOperation = 'screen';
+
+      for (const b of blobs) {
+        const bT  = t * b.speed;
+        const cx  = (b.cellX + b.wanderX * Math.sin(b.freqX * bT + b.phX)) * RW;
+        const cy  = (b.cellY + b.wanderY * Math.sin(b.freqY * bT + b.phY)) * RH;
+        const sr  = Math.min(RW, RH);
+        const rad = sr * b.r * (1 + b.pulseAmp * Math.sin(t * 0.007 + b.pulsePhase));
+
+        const g = oc.createRadialGradient(cx, cy, 0, cx, cy, rad);
+        const [r, gr, bl] = b.rgb;
+        g.addColorStop(0.00, `rgba(${r},${gr},${bl},${b.alpha})`);
+        g.addColorStop(0.35, `rgba(${r},${gr},${bl},${b.alpha * 0.70})`);
+        g.addColorStop(0.65, `rgba(${r},${gr},${bl},${b.alpha * 0.28})`);
+        g.addColorStop(1.00, `rgba(${r},${gr},${bl},0)`);
+
+        oc.beginPath();
+        oc.arc(cx, cy, rad, 0, Math.PI * 2);
+        oc.fillStyle = g;
+        oc.fill();
+      }
+
+      // ── Veil: soft white mist layer (薄纱 / gauze effect) ────────────────────
+      oc.globalCompositeOperation = 'source-over';
+      const veil = oc.createRadialGradient(RW * 0.5, RH * 0.42, 0, RW * 0.5, RH * 0.5, Math.hypot(RW, RH) * 0.65);
+      veil.addColorStop(0.00, 'rgba(255,255,255,0.10)');
+      veil.addColorStop(0.50, 'rgba(255,255,255,0.04)');
+      veil.addColorStop(1.00, 'rgba(255,255,255,0.00)');
+      oc.fillStyle = veil;
+      oc.fillRect(0, 0, RW, RH);
+
+      // ── Upscale to main canvas ───────────────────────────────────────────────
+      ctx.clearRect(0, 0, W, H);
+      ctx.drawImage(off, 0, 0, W, H);
+
+      t++;
+      frameId = requestAnimationFrame(frame);
+    }
+
+    frame();
+
+    const onResize = () => {
+      W = canvas.width  = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      RW = Math.ceil(W / SCALE);
+      RH = Math.ceil(H / SCALE);
+      off.width = RW; off.height = RH;
+    };
+    window.addEventListener('resize', onResize);
+
+    return () => { cancelAnimationFrame(frameId); window.removeEventListener('resize', onResize); };
+  }, [concept]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="absolute inset-0 w-full h-full"
-      style={{ display: 'block' }}
-    />
+    // Wrapper: scale slightly beyond viewport so CSS blur edges never show
+    <div
+      ref={wrapRef}
+      className="absolute"
+      style={{
+        inset: '-8%',           // bleed past all edges
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <canvas
+        ref={canvasRef}
+        style={{
+          width: '100%',
+          height: '100%',
+          display: 'block',
+          filter: 'blur(32px) saturate(1.15) brightness(1.05)',
+        }}
+      />
+    </div>
   );
 }
 
 // ── Main overlay ──────────────────────────────────────────────────────────────
-export default function AIVisualOverlay({ phase, concept, render, perfumeName, onClose }: Props) {
+export default function AIVisualOverlay({ phase, concept, perfumeName, onClose }: Props) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  const isLoading = phase === 'conceiving' || phase === 'concept-ready' || phase === 'rendering';
+  const isLoading = phase === 'conceiving';
+
+  // Derive a tinted background from palette (avoids jarring pure black)
+  const bgColor = concept?.baseLayerColors?.[0]
+    ?? concept?.palette?.[concept.palette.length - 1]?.hex
+    ?? '#07070f';
 
   return (
     <motion.div
       className="fixed inset-0 z-[200] overflow-hidden"
-      style={{ background: '#07070f' }}
+      style={{ background: bgColor + '22' }}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.5 }}
+      transition={{ duration: 0.6 }}
     >
-      {/* Layer 1: Built-in dynamic canvas (plays as soon as concept is ready) */}
+      {/* Aura visual */}
       <AnimatePresence>
-        {concept && !render && (
+        {concept && (
           <motion.div
-            key="preview-canvas"
+            key="aura"
             className="absolute inset-0"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 1.2 }}
+            transition={{ duration: 2.2, ease: 'easeOut' }}
           >
-            <PreviewCanvas concept={concept} />
+            <AuraCanvas concept={concept} />
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Layer 2: AI-generated iframe (fades in over preview canvas) */}
-      <AnimatePresence>
-        {render && (
-          <motion.iframe
-            key="canvas-iframe"
-            srcDoc={render.html}
-            sandbox="allow-scripts"
-            className="absolute inset-0 w-full h-full border-0"
-            title="AI Fragrance Visualization"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 2 }}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* HUD layer */}
+      {/* HUD */}
       <div className="absolute inset-0 flex flex-col justify-between p-8" style={{ pointerEvents: 'none' }}>
 
-        {/* Top-right: close */}
+        {/* Close button */}
         <div className="flex justify-end" style={{ pointerEvents: 'auto' }}>
           <button
             onClick={onClose}
             style={{
-              ...FONT_DATA,
-              fontSize: '16px',
-              color: 'rgba(245,240,232,0.55)',
-              background: 'rgba(7,7,15,0.5)',
-              backdropFilter: 'blur(8px)',
-              border: '1px solid rgba(255,255,255,0.1)',
+              ...FONT_DATA, fontSize: '16px',
+              color: 'rgba(245,240,232,0.60)',
+              background: 'rgba(0,0,0,0.30)',
+              backdropFilter: 'blur(12px)',
+              border: '1px solid rgba(255,255,255,0.12)',
               borderRadius: '3px',
-              width: 32, height: 32,
-              cursor: 'pointer',
+              width: 32, height: 32, cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               transition: 'color 0.15s, background 0.15s',
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = 'rgba(245,240,232,0.9)'; e.currentTarget.style.background = 'rgba(7,7,15,0.8)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(245,240,232,0.55)'; e.currentTarget.style.background = 'rgba(7,7,15,0.5)'; }}
-          >
-            ×
-          </button>
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'rgba(245,240,232,0.95)'; e.currentTarget.style.background = 'rgba(0,0,0,0.55)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(245,240,232,0.60)'; e.currentTarget.style.background = 'rgba(0,0,0,0.30)'; }}
+          >×</button>
         </div>
 
-        {/* Center spinner (only while conceiving, before any visual) */}
-        {phase === 'conceiving' && (
-          <div className="flex-1 flex flex-col items-center justify-center gap-4" style={{ pointerEvents: 'none' }}>
-            <span className="ai-spinner-lg" />
-            <p style={{ ...FONT_DATA, fontSize: '9px', color: 'var(--gold)', letterSpacing: '0.25em' }}>
-              ANALYSE DES NOTES OLFACTIVES…
-            </p>
-          </div>
-        )}
+        {/* Loading */}
+        <AnimatePresence>
+          {isLoading && (
+            <motion.div
+              key="loading"
+              className="flex-1 flex flex-col items-center justify-center gap-5"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              transition={{ duration: 0.4 }}
+            >
+              <span className="ai-spinner-lg" />
+              <p style={{ ...FONT_DISPLAY, fontSize: '19px', color: 'rgba(245,240,232,0.80)' }}>
+                {perfumeName}
+              </p>
+              <p style={{ ...FONT_DATA, fontSize: '8px', color: 'var(--gold)', letterSpacing: '0.25em' }}>
+                ANALYSE DES NOTES OLFACTIVES…
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        {/* Bottom: info panel */}
+        {/* Info panel */}
         <AnimatePresence>
           {concept && (
             <motion.div
-              initial={{ opacity: 0, y: 16 }}
+              initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 8 }}
-              transition={{ duration: 0.5 }}
+              transition={{ duration: 0.7, delay: 0.6, ease: 'easeOut' }}
               style={{
-                background: 'rgba(7,7,15,0.72)',
-                backdropFilter: 'blur(16px)',
-                border: '1px solid rgba(255,255,255,0.07)',
-                borderRadius: '4px',
-                padding: '18px 22px',
+                background: 'rgba(0,0,0,0.28)',
+                backdropFilter: 'blur(24px)',
+                border: '1px solid rgba(255,255,255,0.10)',
+                borderRadius: '6px',
+                padding: '20px 24px',
               }}
             >
-              {/* Palette dots */}
               <div className="flex items-center gap-2 mb-4">
                 {concept.palette.map((p) => (
-                  <div
-                    key={p.hex}
-                    title={p.label}
-                    style={{
-                      width: 8, height: 8,
-                      borderRadius: '50%',
-                      background: p.hex,
-                      flexShrink: 0,
-                      boxShadow: `0 0 6px ${p.hex}88`,
-                    }}
-                  />
+                  <div key={p.hex} title={p.label} style={{
+                    width: 7, height: 7, borderRadius: '50%',
+                    background: p.hex, flexShrink: 0,
+                    boxShadow: `0 0 8px ${p.hex}`,
+                  }} />
                 ))}
-                {isLoading && <span className="ai-spinner" style={{ marginLeft: 8 }} />}
-                {isLoading && (
-                  <span style={{ ...FONT_DATA, fontSize: '8px', color: 'var(--text-muted)', letterSpacing: '0.2em' }}>
-                    {phase === 'rendering' ? 'GÉNÉRATION VISUELLE…' : 'TRAITEMENT…'}
-                  </span>
-                )}
               </div>
 
-              <p style={{ ...FONT_DISPLAY, fontSize: '17px', color: 'rgba(245,240,232,0.88)', marginBottom: 8, lineHeight: 1.3 }}>
+              <p style={{ ...FONT_DISPLAY, fontSize: '17px', color: 'rgba(255,255,255,0.90)', marginBottom: 8, lineHeight: 1.35 }}>
                 {perfumeName}
               </p>
-              <p style={{ ...FONT_DATA, fontSize: '11px', color: 'rgba(245,240,232,0.55)', lineHeight: 1.75, letterSpacing: '0.05em' }}>
+              <p style={{ ...FONT_DATA, fontSize: '11px', color: 'rgba(255,255,255,0.58)', lineHeight: 1.8, letterSpacing: '0.05em' }}>
                 {concept.description}
               </p>
-              <p style={{ ...FONT_DATA, fontSize: '10px', color: 'rgba(245,240,232,0.28)', lineHeight: 1.65, marginTop: 6, fontStyle: 'italic' }}>
+              <p style={{ ...FONT_DATA, fontSize: '10px', color: 'rgba(255,255,255,0.30)', lineHeight: 1.65, marginTop: 6, fontStyle: 'italic' }}>
                 {concept.descriptionEn}
               </p>
 
-              <div className="mt-4" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div className="mt-4 flex items-center gap-3">
                 <span style={{
                   ...FONT_DATA, fontSize: '8px', letterSpacing: '0.2em',
-                  color: 'var(--gold)', background: 'rgba(201,169,110,0.1)',
-                  border: '1px solid rgba(201,169,110,0.2)', borderRadius: '2px', padding: '2px 8px',
+                  color: 'var(--gold)', background: 'rgba(201,169,110,0.12)',
+                  border: '1px solid rgba(201,169,110,0.25)', borderRadius: '2px', padding: '2px 8px',
                 }}>
                   {concept.dominantMood.toUpperCase()}
                 </span>
-                <span style={{ ...FONT_DATA, fontSize: '8px', color: 'var(--text-muted)', letterSpacing: '0.15em' }}>
-                  {concept.canvasHints.technique.toUpperCase()}
-                </span>
+                {concept.philosophy?.movementName && (
+                  <span style={{ ...FONT_DATA, fontSize: '8px', color: 'rgba(255,255,255,0.32)', letterSpacing: '0.14em', fontStyle: 'italic' }}>
+                    {concept.philosophy.movementName}
+                  </span>
+                )}
               </div>
             </motion.div>
           )}

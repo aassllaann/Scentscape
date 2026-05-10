@@ -1,13 +1,14 @@
 'use client';
 
 import { AnimatePresence, motion } from 'framer-motion';
+import { useEffect, useState } from 'react';
 import {
   useSelectedPerfume, useSelectedFamily, useSelectedSubfamily, useAppDispatch,
 } from '@/lib/store';
 import SillageTimeline from '@/components/SillageTimeline';
 import {
   FAMILY_LABELS, FAMILY_COLORS, SUBFAMILY_LABELS,
-} from '@/components/FragranceWheel/useFragranceWheel';
+} from '@/lib/fragranceData';
 import AIVisualOverlay from '@/components/AIVisualOverlay';
 import { useAIVisualize, type VisualizePhase } from '@/hooks/useAIVisualize';
 import type { Perfume } from '@/lib/types';
@@ -54,7 +55,7 @@ function MoodBars({ scores }: { scores: Record<string, number> }) {
             <span style={{ fontFamily: 'var(--font-data)', fontSize: '8px', letterSpacing: '0.14em', color: 'var(--text-muted)', width: 44, flexShrink: 0 }}>
               {label}
             </span>
-            <div className="flex-1 h-px relative" style={{ background: 'rgba(255,255,255,0.08)' }}>
+            <div className="flex-1 h-px relative" style={{ background: 'rgba(255,255,255,0.15)' }}>
               <div
                 className="absolute top-0 left-0 h-full"
                 style={{ width: `${pct}%`, background: 'var(--gold)', opacity: 0.7 }}
@@ -77,9 +78,9 @@ function NoteTag({ note, color }: { note: string; color: string }) {
       style={{
         fontFamily: 'var(--font-data)',
         fontSize: '10px',
-        color: 'var(--text-secondary)',
-        background: `${color}12`,
-        border: `1px solid ${color}28`,
+        color: 'var(--text-primary)',
+        background: `${color}28`,
+        border: `1px solid ${color}55`,
         borderRadius: '3px',
         padding: '2px 8px',
         letterSpacing: '0.04em',
@@ -136,7 +137,7 @@ function NoteStructure({ perfume }: { perfume: Perfume }) {
   return (
     <div>
       <div className="flex flex-wrap gap-1">
-        {flat.map((n) => <NoteTag key={n} note={n} color="rgba(201,169,110,0.6)" />)}
+        {flat.map((n) => <NoteTag key={n} note={n} color="#c9a96e" />)}
       </div>
       <p className="mt-2" style={{ fontFamily: 'var(--font-data)', fontSize: '9px', color: 'var(--text-muted)', letterSpacing: '0.1em' }}>
         ※ hiérarchie non disponible
@@ -164,17 +165,17 @@ function PerfumeRow({ perfume, accentColor }: { perfume: Perfume; accentColor: s
           {perfume.name}
         </span>
         {perfume.year ? (
-          <span style={{ fontFamily: 'var(--font-data)', fontSize: '9px', color: 'var(--text-muted)', flexShrink: 0, letterSpacing: '0.1em' }}>
+          <span style={{ fontFamily: 'var(--font-data)', fontSize: '9px', color: 'var(--text-secondary)', flexShrink: 0, letterSpacing: '0.1em' }}>
             {perfume.year}
           </span>
         ) : null}
       </div>
       <div className="flex items-center justify-between mt-0.5">
-        <span style={{ fontFamily: 'var(--font-data)', fontSize: '9px', letterSpacing: '0.13em', color: 'var(--text-muted)' }}>
+        <span style={{ fontFamily: 'var(--font-data)', fontSize: '9px', letterSpacing: '0.13em', color: 'var(--text-secondary)' }}>
           {perfume.brand.toUpperCase()}
         </span>
         {perfume.gender && (
-          <span style={{ fontFamily: 'var(--font-data)', fontSize: '8px', color: accentColor, opacity: 0.6, letterSpacing: '0.1em' }}>
+          <span style={{ fontFamily: 'var(--font-data)', fontSize: '8px', color: accentColor, opacity: 0.85, letterSpacing: '0.1em' }}>
             {GENDER_LABEL[perfume.gender] ?? perfume.gender}
           </span>
         )}
@@ -213,11 +214,18 @@ function EmptyState() {
 }
 
 // ── Family list ───────────────────────────────────────────────────────────────
-function FamilyList({ family, perfumes }: { family: string; perfumes: Perfume[] }) {
+function FamilyList({ family }: { family: string }) {
   const color = FAMILY_COLORS[family] ?? '#888';
   const label = FAMILY_LABELS[family] ?? family;
-  const all = perfumes.filter((p) => p.fragranceFamily === family);
-  const shown = all.slice(0, LIST_LIMIT);
+  const [data, setData] = useState<{ total: number; items: Perfume[] } | null>(null);
+
+  useEffect(() => {
+    setData(null);
+    fetch(`/api/perfumes?family=${encodeURIComponent(family)}`)
+      .then((r) => r.json())
+      .then(setData)
+      .catch(() => {});
+  }, [family]);
 
   return (
     <motion.div
@@ -232,25 +240,36 @@ function FamilyList({ family, perfumes }: { family: string; perfumes: Perfume[] 
           {label}
         </h2>
         <p className="label-caps mt-1" style={{ color: 'var(--text-muted)' }}>
-          {all.length.toLocaleString()} fragrances
-          {all.length > LIST_LIMIT && ` · 显示前 ${LIST_LIMIT}`}
+          {data ? (
+            <>
+              {data.total.toLocaleString()} fragrances
+              {data.total > LIST_LIMIT && ` · 显示前 ${LIST_LIMIT}`}
+            </>
+          ) : '…'}
         </p>
       </div>
       <div className="flex-1 overflow-y-auto">
-        {shown.map((p) => <PerfumeRow key={p.id} perfume={p} accentColor={color} />)}
+        {data?.items.map((p) => <PerfumeRow key={p.id} perfume={p} accentColor={color} />)}
       </div>
     </motion.div>
   );
 }
 
 // ── Subfamily list ────────────────────────────────────────────────────────────
-function SubfamilyList({ family, subfamilyId, perfumes }: { family: string; subfamilyId: string; perfumes: Perfume[] }) {
+function SubfamilyList({ family, subfamilyId }: { family: string; subfamilyId: string }) {
   const dispatch = useAppDispatch();
   const color = FAMILY_COLORS[family] ?? '#888';
   const familyLabel = FAMILY_LABELS[family] ?? family;
   const subLabel = SUBFAMILY_LABELS[subfamilyId] ?? subfamilyId;
-  const all = perfumes.filter((p) => p.subfamilyId === subfamilyId);
-  const shown = all.slice(0, LIST_LIMIT);
+  const [data, setData] = useState<{ total: number; items: Perfume[] } | null>(null);
+
+  useEffect(() => {
+    setData(null);
+    fetch(`/api/perfumes?subfamily=${encodeURIComponent(subfamilyId)}`)
+      .then((r) => r.json())
+      .then(setData)
+      .catch(() => {});
+  }, [subfamilyId]);
 
   return (
     <motion.div
@@ -262,7 +281,7 @@ function SubfamilyList({ family, subfamilyId, perfumes }: { family: string; subf
       <div className="px-5 pt-4 pb-4 flex-shrink-0" style={{ borderBottom: '1px solid var(--glass-border)' }}>
         <button
           className="flex items-center gap-1.5 mb-3 transition-opacity hover:opacity-100"
-          style={{ opacity: 0.55 }}
+          style={{ opacity: 0.75 }}
           onClick={() => dispatch({ type: 'SET_SUBFAMILY', payload: null })}
         >
           <span style={{ fontFamily: 'var(--font-data)', fontSize: '9px', color }}>←</span>
@@ -275,12 +294,16 @@ function SubfamilyList({ family, subfamilyId, perfumes }: { family: string; subf
           {subLabel}
         </h2>
         <p className="label-caps mt-1" style={{ color: 'var(--text-muted)' }}>
-          {all.length.toLocaleString()} fragrances
-          {all.length > LIST_LIMIT && ` · 显示前 ${LIST_LIMIT}`}
+          {data ? (
+            <>
+              {data.total.toLocaleString()} fragrances
+              {data.total > LIST_LIMIT && ` · 显示前 ${LIST_LIMIT}`}
+            </>
+          ) : '…'}
         </p>
       </div>
       <div className="flex-1 overflow-y-auto">
-        {shown.map((p) => <PerfumeRow key={p.id} perfume={p} accentColor={color} />)}
+        {data?.items.map((p) => <PerfumeRow key={p.id} perfume={p} accentColor={color} />)}
       </div>
     </motion.div>
   );
@@ -288,16 +311,14 @@ function SubfamilyList({ family, subfamilyId, perfumes }: { family: string; subf
 
 // ── AI Visualize Button ───────────────────────────────────────────────────────
 const AI_BTN_LABELS: Record<string, string> = {
-  idle:           '✦  VISUALISER L\'ESSENCE',
-  conceiving:     'ANALYSE DES NOTES…',
-  'concept-ready':'GÉNÉRATION VISUELLE…',
-  rendering:      'GÉNÉRATION VISUELLE…',
-  done:           '▶  REJOUER LA VISION',
-  error:          '↺  RÉESSAYER',
+  idle:       '✦  VISUALISER L\'ESSENCE',
+  conceiving: 'ANALYSE DES NOTES…',
+  done:       '▶  REJOUER LA VISION',
+  error:      '↺  RÉESSAYER',
 };
 
 function AIVisualButton({ phase, onVisualize }: { phase: VisualizePhase; onVisualize: () => void }) {
-  const isLoading = phase === 'conceiving' || phase === 'concept-ready' || phase === 'rendering';
+  const isLoading = phase === 'conceiving';
   const isActive  = phase === 'done';
 
   return (
@@ -335,7 +356,7 @@ function PerfumeView({ perfume }: { perfume: Perfume }) {
   const dispatch = useAppDispatch();
   const selectedSubfamily = useSelectedSubfamily();
   const selectedFamily    = useSelectedFamily();
-  const { phase, concept, render, error: aiError, visualize, dismiss } = useAIVisualize();
+  const { phase, concept, error: aiError, visualize, dismiss } = useAIVisualize();
 
   const familyColor  = selectedFamily ? (FAMILY_COLORS[selectedFamily] ?? '#888') : 'var(--gold)';
   const familyLabel  = selectedFamily ? (FAMILY_LABELS[selectedFamily] ?? selectedFamily) : null;
@@ -348,7 +369,7 @@ function PerfumeView({ perfume }: { perfume: Perfume }) {
       <div className="flex items-center justify-between px-5 pt-4 pb-3 flex-shrink-0" style={{ borderBottom: '1px solid var(--glass-border)' }}>
         <button
           className="flex items-center gap-1.5 transition-opacity hover:opacity-100"
-          style={{ opacity: 0.5 }}
+          style={{ opacity: 0.72 }}
           onClick={() => dispatch({ type: 'SET_PERFUME', payload: null })}
         >
           <span style={{ fontFamily: 'var(--font-data)', fontSize: '9px', color: familyColor }}>←</span>
@@ -381,21 +402,21 @@ function PerfumeView({ perfume }: { perfume: Perfume }) {
         {/* 元数据行 */}
         <div className="flex items-center gap-2 mt-2 flex-wrap">
           {perfume.year ? (
-            <span style={{ fontFamily: 'var(--font-data)', fontSize: '9px', letterSpacing: '0.14em', color: 'var(--text-muted)' }}>
+            <span style={{ fontFamily: 'var(--font-data)', fontSize: '9px', letterSpacing: '0.14em', color: 'var(--text-secondary)' }}>
               {perfume.year}
             </span>
           ) : null}
           {perfume.year && perfume.gender && (
-            <span style={{ color: 'var(--glass-border)' }}>·</span>
+            <span style={{ color: 'var(--text-muted)' }}>·</span>
           )}
           {perfume.gender && (
-            <span style={{ fontFamily: 'var(--font-data)', fontSize: '9px', letterSpacing: '0.14em', color: 'var(--text-muted)' }}>
+            <span style={{ fontFamily: 'var(--font-data)', fontSize: '9px', letterSpacing: '0.14em', color: 'var(--text-secondary)' }}>
               {GENDER_LABEL[perfume.gender] ?? perfume.gender}
             </span>
           )}
           {perfume.subfamilyId && (
             <>
-              <span style={{ color: 'var(--glass-border)' }}>·</span>
+              <span style={{ color: 'var(--text-muted)' }}>·</span>
               <span
                 style={{
                   fontFamily: 'var(--font-data)', fontSize: '9px', letterSpacing: '0.12em',
@@ -466,7 +487,6 @@ function PerfumeView({ perfume }: { perfume: Perfume }) {
           <AIVisualOverlay
             phase={phase}
             concept={concept}
-            render={render}
             perfumeName={`${perfume.name}  —  ${perfume.brand}`}
             onClose={dismiss}
           />
@@ -477,9 +497,7 @@ function PerfumeView({ perfume }: { perfume: Perfume }) {
 }
 
 // ── 主组件 ────────────────────────────────────────────────────────────────────
-interface Props { perfumes: Perfume[] }
-
-export default function PerfumeDetail({ perfumes }: Props) {
+export default function PerfumeDetail() {
   const selectedPerfume    = useSelectedPerfume();
   const selectedFamily     = useSelectedFamily();
   const selectedSubfamily  = useSelectedSubfamily();
@@ -503,8 +521,8 @@ export default function PerfumeDetail({ perfumes }: Props) {
       >
         <AnimatePresence mode="wait">
           {showEmpty    && <EmptyState key="empty" />}
-          {showFamily   && <FamilyList   key={`fam-${selectedFamily}`}    family={selectedFamily}  perfumes={perfumes} />}
-          {showSubfamily && <SubfamilyList key={`sub-${selectedSubfamily}`} family={selectedFamily!} subfamilyId={selectedSubfamily} perfumes={perfumes} />}
+          {showFamily   && <FamilyList   key={`fam-${selectedFamily}`}    family={selectedFamily} />}
+          {showSubfamily && <SubfamilyList key={`sub-${selectedSubfamily}`} family={selectedFamily!} subfamilyId={selectedSubfamily} />}
         </AnimatePresence>
       </aside>
 

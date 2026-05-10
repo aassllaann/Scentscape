@@ -66,6 +66,11 @@ export interface AICanvasHints {
   backgroundGradient: string; // CSS gradient string
 }
 
+export interface AIPhilosophy {
+  movementName: string;  // e.g. "Aromatic Dissolution"
+  paragraphs: string[];  // 4-6 algorithmic philosophy paragraphs (English)
+}
+
 // Agent 1 output: visual concept (no code)
 export interface AIVisualConcept {
   perfumeId: string;
@@ -76,12 +81,16 @@ export interface AIVisualConcept {
   canvasHints: AICanvasHints;
   description: string;    // 中文诗意描述
   descriptionEn: string;  // English
+  philosophy: AIPhilosophy;
+  topLayerColors: string[];    // hex array derived from top notes
+  heartLayerColors: string[];  // hex array derived from heart notes
+  baseLayerColors: string[];   // hex array derived from base notes
 }
 
-// Agent 2 output: runnable canvas HTML
+// Agent 2 output: p5.js instance-mode sketch function source
 export interface AIVisualRender {
   perfumeId: string;
-  html: string;         // complete self-contained HTML
+  sketchCode: string;   // p5.js instance-mode sketch: (p) => { p.setup=...; p.draw=...; }
   generatedAt: number;  // Date.now()
 }
 
