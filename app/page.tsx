@@ -1,57 +1,57 @@
-import FragranceWheel from '@/components/FragranceWheel';
-import PerfumeDetail from '@/components/PerfumeDetail';
-import SearchBar from '@/components/SearchBar';
-import { getPerfumes, getPreviews } from '@/lib/perfumeServer';
+import Link from 'next/link';
+import SiteHeader from '@/components/SiteHeader';
+import { FAMILY_COLORS, FAMILY_LABELS, FAMILY_ORDER } from '@/lib/fragranceData';
+import { getPerfumes } from '@/lib/perfumeServer';
+
+const FAMILY_DESCRIPTIONS: Record<string, string> = {
+  Oriental: 'Amber, resin, spice, and enveloping warmth.',
+  Woody: 'Cedar, vetiver, moss, and grounded calm.',
+  Fougere: 'Aromatic herbs, lavender, and green structure.',
+  Leather: 'Smoke, suede, tobacco, and polished depth.',
+  Gourmand: 'Vanilla, caramel, cacao, and edible comfort.',
+  Citrus: 'Bergamot, lemon, zest, and radiant clarity.',
+  Fresh: 'Green leaves, herbs, air, and crisp energy.',
+  Aquatic: 'Marine air, rain, minerals, and cool distance.',
+  Floral: 'Petals, powder, bloom, and luminous softness.',
+};
 
 export default function Home() {
   const totalCount = getPerfumes().length;
-  const { family: familyPreviews, subfamily: subfamilyPreviews } = getPreviews();
 
   return (
-    <div className="flex h-full overflow-hidden">
-      {/* 左列：标题 + 搜索 + 香调轮 */}
-      <div className="flex flex-col flex-1 px-6 py-5 gap-4 min-w-0">
-
-        {/* 标题组 */}
-        <header className="flex-shrink-0 flex items-end justify-between">
-          <div>
-            <h1
-              className="font-display leading-none tracking-wide"
-              style={{ fontSize: '2.2rem', fontStyle: 'italic', color: 'var(--text-primary)' }}
-            >
-              Scentscape
-            </h1>
-            <p className="label-caps mt-1.5" style={{ letterSpacing: '0.22em' }}>
-              Olfactory Atlas · {totalCount.toLocaleString()} fragrances
-            </p>
-          </div>
-
-          {/* 装饰刻度线 */}
-          <div className="flex items-end gap-0.5 pb-1 opacity-20">
-            {[16,10,14,8,12,6,10].map((h, i) => (
-              <div
-                key={i}
-                className="w-px rounded-full"
-                style={{ height: h, background: 'var(--gold)' }}
-              />
-            ))}
-          </div>
-        </header>
-
-        {/* 黄金分割线 */}
-        <div className="flex-shrink-0 h-px" style={{ background: 'var(--glass-border)' }} />
-
-        {/* 搜索栏 */}
-        <div className="flex-shrink-0">
-          <SearchBar />
+    <div className="home-page">
+      <SiteHeader active="home" />
+      <section className="home-hero">
+        <div className="home-copy">
+          <p className="eyebrow">An olfactory atlas</p>
+          <h1>A landscape<br />for every scent.</h1>
+          <p className="home-intro">Explore fragrance families, discover perfume notes, and see scent translated into visual form.</p>
+          <Link className="primary-link" href="/atlas">Explore the atlas <span aria-hidden="true">↗</span></Link>
         </div>
-
-        {/* 香调轮 */}
-        <FragranceWheel familyPreviews={familyPreviews} subfamilyPreviews={subfamilyPreviews} />
-      </div>
-
-      {/* 右侧详情面板 */}
-      <PerfumeDetail />
+        <div className="home-visual" aria-label="Nine fragrance families represented as a color spectrum">
+          <div className="home-wheel" aria-hidden="true">
+            <div className="home-wheel-core"><span>9 families</span><strong>{totalCount.toLocaleString()}</strong><span>fragrances</span></div>
+          </div>
+          <p className="visual-caption">A living taxonomy of scent</p>
+        </div>
+      </section>
+      <section className="family-index" aria-labelledby="family-index-title">
+        <div className="section-heading"><p className="eyebrow">Begin anywhere</p><h2 id="family-index-title">Start with a scent family</h2></div>
+        <div className="family-grid">
+          {FAMILY_ORDER.map((family, index) => (
+            <Link key={family} className="family-card" href={`/atlas?family=${family}`}>
+              <span className="family-number">{String(index + 1).padStart(2, '0')}</span>
+              <span className="family-swatch" style={{ background: FAMILY_COLORS[family] }} aria-hidden="true" />
+              <span className="family-card-copy"><strong>{family}</strong><span>{FAMILY_LABELS[family]}</span><small>{FAMILY_DESCRIPTIONS[family]}</small></span>
+              <span className="family-arrow" aria-hidden="true">↗</span>
+            </Link>
+          ))}
+        </div>
+      </section>
+      <footer className="site-footer">
+        <p>Scentscape turns perfume data into an exploratory visual language.</p>
+        <p>Family, mood, and duration attributes are interpretive metadata derived from listed notes.</p>
+      </footer>
     </div>
   );
 }

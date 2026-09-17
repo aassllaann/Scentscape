@@ -9,7 +9,8 @@ let _cache: Perfume[] | null = null;
 
 export function getPerfumes(): Perfume[] {
   if (!_cache) {
-    const filePath = path.join(process.cwd(), 'data', 'perfumes.json');
+    const cwd = process.cwd();
+    const filePath = path.join(cwd, fs.existsSync(path.join(cwd, 'data', 'perfumes.json')) ? '' : 'Scentscape', 'data', 'perfumes.json');
     _cache = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as Perfume[];
   }
   return _cache;

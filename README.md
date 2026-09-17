@@ -4,11 +4,12 @@ AI-assisted sensory visualization interface for exploring perfume data through f
 
 [English](README.md) | [中文](README.zh-CN.md)
 
-<!-- Preview image / GIF placeholder: add the final interface screenshot or short interaction GIF here after visual review. -->
+![Scentscape Home landing page](public/screenshots/home-hero.png)
+*Scentscape Home landing page showing project vision and total count overview of the 9 fragrance families.*
 
 ## Overview
 
-Scentscape is an experimental creative-technology prototype that turns a large perfume dataset into an interactive olfactory atlas. It helps users browse scent families, search individual fragrances, inspect note composition, and translate scent profiles into visual language.
+Scentscape is an experimental creative-technology prototype that turns a large perfume dataset into an interactive olfactory atlas. A short editorial Home introduces the project; the Atlas supports family browsing, search, note inspection, and optional visual interpretation.
 
 The project is designed for fragrance enthusiasts, creative-technology reviewers, and applied AI / interaction design portfolios. Instead of treating perfume data as a static catalog, Scentscape frames each fragrance as a layered sensory system: family, subfamily, top/heart/base notes, mood scores, intensity over time, and an optional AI-generated synesthetic visual concept.
 
@@ -20,16 +21,54 @@ The project is designed for fragrance enthusiasts, creative-technology reviewers
 - Implemented AI-assisted visualization routes that convert perfume profiles into JSON visual concepts and p5.js generative sketch code.
 - Used AI coding assistance as workflow support while keeping product direction, interaction decisions, data interpretation, and final implementation review under my ownership.
 
-## Key Features
+## Key Features & Component Breakdown
 
-- **Interactive fragrance wheel:** D3 renders 9 fragrance families and their subfamilies as a radial atlas, with hover previews and click-based filtering.
-- **Searchable perfume index:** users can search by perfume or brand name and jump directly into a fragrance detail view.
-- **Family and subfamily browsing:** the side panel lists matching perfumes, preserves total result counts, and limits long lists for scanability.
-- **Perfume detail panel:** each fragrance shows brand, year, gender, subfamily, mood scores, note structure, and optional description.
-- **Sillage timeline:** a slider and intensity curve reveal how top, heart, and base notes change across the perfume's perceived duration.
-- **Mood-responsive canvas:** the page background shifts by fragrance visual parameters such as warmth, density, color, and texture.
-- **AI synesthetic vision:** DeepSeek-powered API routes generate a visual concept and sanitized p5.js sketch prompt path from the selected perfume's scent profile.
-- **Local data pipeline:** scripts convert Fragrantica-style CSV/XLSX source data into a normalized JSON dataset for the app.
+### 1. Interactive Fragrance Wheel & Atlas Browsing
+
+![Atlas main interface](public/screenshots/atlas-main.png)
+*Atlas main interface featuring the D3 interactive double-ring fragrance wheel, search bar, family shortcuts, and right-hand paginated perfume list.*
+
+- **Double-ring D3 fragrance wheel:** renders 9 primary fragrance families (Oriental, Woody, Fougere, Leather, Gourmand, Citrus, Fresh, Aquatic, Floral) and subfamilies as concentric radial arcs with hover previews and pointer selection.
+- **Searchable perfume index:** real-time query by perfume name or brand with instant suggestions and paginated result lists.
+- **Family shortcuts & toolbar:** touch-friendly bottom shortcuts, zoom/pan controls, and viewport reset support.
+
+---
+
+### 2. Perfume Detail Dialog & Sillage Timeline
+
+![Perfume detail modal](public/screenshots/perfume-detail.png)
+*Perfume detail modal presenting metadata, mood character, three-tier note structure, AI vision trigger, and interactive sillage timeline.*
+
+- **Multidimensional profile:** displays brand, release year, gender target, subfamily classification, and descriptive notes.
+- **CARACTÈRE mood score matrix:** visualizes mood scores (Warmth, Freshness, Spice, Darkness, Sweetness, Floral) as relative score bars.
+- **Three-tier note structure (Tête / Cœur / Fond):** explicit categorization of top, heart, and base notes with color-coded note tags.
+- **Interactive sillage timeline:** slider and intensity curve allow users to scrub through time (0min -> 30min -> Heart -> Base -> 6h+) and inspect changing active note components.
+
+---
+
+### 3. AI Visual Generation
+
+![AI visual generation interface - dark theme](public/screenshots/ai-vision-dark.png)
+*Full-screen AI visual overlay displaying color palettes, mood labels, and generated text descriptions based on perfume components.*
+
+![AI visual generation interface - Amber Queen](public/screenshots/ai-vision-amber.png)
+*Warm-toned background interface and visual description generated for the perfume Amber Queen.*
+
+- **AI fragrance analysis:** calls the DeepSeek model to analyze perfume notes, intensity curves, and mood scores, generating a 3-5 color palette, dominant mood labels, and bilingual text descriptions.
+- **Dynamic Canvas background:** uses HTML5 Canvas with smooth animation algorithms to render gradient background graphics based on the generated palette.
+- **Full-screen view & replay:** click the "VISUALISER L'ESSENCE" button to open the full-screen view, inspect color distributions, and replay the visual animation at any time.
+
+---
+
+### 4. Mood-Responsive Canvas
+
+- The underlying `MoodCanvas` system smoothly adjusts ambient background colors, density, warmth, and texture (smooth, grainy, crystalline) according to the selected perfume's visual parameters.
+
+---
+
+### 5. Local Data Pipeline
+
+- Data import scripts (`scripts/import-fragrantica.mjs`) normalize CSV/XLSX raw data into a clean, searchable JSON dataset of 37,923 fragrances.
 
 ## Tech Stack
 
@@ -43,16 +82,19 @@ The project is designed for fragrance enthusiasts, creative-technology reviewers
 ## Architecture / Workflow
 
 ```text
-User opens Scentscape
+User opens Scentscape Home
+        |
+        v
+Chooses Atlas or a fragrance family
         |
         v
 FragranceWheel renders family / subfamily atlas
         |
-        +--> SearchBar queries /api/perfumes?q=
+        +--> SearchBar queries /api/perfumes?q=&offset=&limit=
         |
-        +--> Family click queries /api/perfumes?family=
+        +--> Family click queries /api/perfumes?family=&offset=&limit=
         |
-        +--> Subfamily click queries /api/perfumes?subfamily=
+        +--> Subfamily click queries /api/perfumes?subfamily=&offset=&limit=
         |
         v
 PerfumeDetail shows notes, mood, metadata, and sillage
@@ -69,12 +111,14 @@ PerfumeDetail shows notes, mood, metadata, and sillage
 
 Core project files:
 
-- `app/page.tsx`: main two-panel application layout.
+- `app/page.tsx`: editorial Home and family entry points.
+- `app/atlas/page.tsx`: responsive interactive olfactory atlas.
 - `components/FragranceWheel/`: D3 radial fragrance-family visualization.
-- `components/PerfumeDetail/`: family lists, subfamily lists, perfume profile, mood bars, and AI visualize trigger.
+- `components/PerfumeDetail/`: paged family and subfamily lists, perfume profile, mood bars, and AI visualize trigger.
 - `components/SillageTimeline/`: intensity curve, time slider, and note-stage cards.
 - `components/MoodCanvas/`: ambient background system driven by fragrance visual parameters.
-- `app/api/perfumes/route.ts`: search, family, and subfamily perfume API.
+- `app/api/perfumes/route.ts`: paginated search, family, and subfamily perfume API.
+- `lib/pagination.ts`: validated offset/limit pagination shared by the API.
 - `app/api/visualize/`: AI concept and p5.js render-generation routes.
 - `data/perfumes.json`: normalized perfume dataset used by the app.
 - `scripts/import-fragrantica.mjs`: CSV-to-JSON transformation workflow.
@@ -82,9 +126,9 @@ Core project files:
 ## Results
 
 - Normalized **37,923 perfume records** for interactive search and family exploration.
-- Implemented a 9-family olfactory taxonomy with subfamily filtering and hover previews.
-- Built a working prototype that combines data visualization, sensory interaction, and AI-assisted generative-art planning.
-- Kept the AI visual layer optional and cached on the client, so the core browsing experience remains usable without repeatedly regenerating concepts.
+- Implemented a 9-family olfactory taxonomy with subfamily filtering, hover previews, pointer controls, and keyboard selection.
+- Built a working prototype that combines data visualization, sensory interaction, responsive navigation, and AI-assisted generative-art planning.
+- Kept the AI visual layer optional and cached on the client, so core browsing remains usable without AI credentials or repeated concept generation.
 
 ## Run Locally
 
@@ -103,6 +147,7 @@ Useful development commands:
 
 ```bash
 npm run lint
+npm run check:pagination
 npm run build
 ```
 
@@ -114,37 +159,11 @@ DEEPSEEK_API_KEY=your_api_key
 
 ## Data Notes
 
-The fragrance dataset is derived from local CSV/XLSX source material and transformed into app-ready JSON. Family, subfamily, mood, and intensity fields are heuristic classifications based on note keywords and should be treated as exploratory interface metadata rather than official perfumery taxonomy.
+The fragrance dataset is derived from local CSV/XLSX source material and transformed into app-ready JSON. Family, subfamily, mood, and intensity fields are heuristic classifications based on note keywords. Treat them as exploratory interface metadata rather than official perfumery taxonomy or measured performance data.
 
-Some records have richer note-stage data than others. When top, heart, and base notes are unavailable, the app falls back to a flatter note presentation.
+Some records have richer note-stage data than others. When top, heart, and base notes are unavailable, the app falls back to a flatter note presentation. The timeline is an estimated evolution, not a longevity measurement; the optional AI vision is an artistic interpretation.
 
 ## Current Status
 
-- Implemented: fragrance wheel, search, family/subfamily browsing, perfume detail panel, mood canvas, sillage timeline, AI concept route, AI render route, and data import workflow.
-- Pending: final GitHub screenshot/GIF, public deployment link, mobile layout pass, and final data-source attribution polish before a fully public portfolio release.
-
-## Repository Packaging Notes
-
-Suggested GitHub About description:
-
-```text
-AI-assisted sensory visualization interface for exploring perfume data through scent families, notes, sillage, and generative visuals.
-```
-
-Suggested GitHub topics:
-
-```text
-creative-technology, human-ai-interaction, data-visualization, interactive-visualization, generative-ai, nextjs, typescript, d3, p5js
-```
-
-Suggested LinkedIn Featured title:
-
-```text
-Scentscape - AI-Assisted Sensory Visualization Interface
-```
-
-Suggested LinkedIn Featured description:
-
-```text
-Built an interactive perfume-data interface that combines fragrance-family visualization, note-stage exploration, sillage timelines, and AI-assisted generative visual concepts.
-```
+- Implemented: Home and Atlas routes, warm editorial surface system, fragrance wheel, responsive and accessible navigation, paginated search and family/subfamily browsing, perfume detail dialog, mood canvas, sillage timeline, AI concept/render routes, and data import workflow.
+- Verified: lint, TypeScript, production build, focused pagination checks, and browser checks across 360px, 390px, 768px, 1280px, and 1440px viewports.

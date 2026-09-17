@@ -34,7 +34,10 @@ export function useFragranceWheel(
   options: UseFragranceWheelOptions
 ) {
   const optionsRef = useRef(options);
-  optionsRef.current = options;
+
+  useEffect(() => {
+    optionsRef.current = options;
+  }, [options]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -43,6 +46,7 @@ export function useFragranceWheel(
     import('d3').then((d3) => {
       const svg = d3.select(svgRef.current);
       const { onFamilyHover, onFamilyClick, onSubfamilyClick } = optionsRef.current;
+      const resetDuration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 500;
 
       svg.selectAll('*').remove();
 
@@ -50,10 +54,10 @@ export function useFragranceWheel(
       const r = size / 2;
 
       // 三层半径：中心圆 → 大类环 → 细分环
-      const innerR      = r * 0.35;   // 中心圆外缘
-      const familyMidR  = r * 0.57;   // 大类环外缘（兼内层）
-      const outerR      = r * 0.85;   // 细分环外缘
-      const outerHoverR = r * 0.92;   // hover/选中时外扩
+      const innerR = r * 0.35;   // 中心圆外缘
+      const familyMidR = r * 0.57;   // 大类环外缘（兼内层）
+      const outerR = r * 0.85;   // 细分环外缘
+      const outerHoverR = outerR + 6;   // Subtle hover/selection expansion
 
       const g = svg
         .attr('viewBox', `-${r} -${r} ${size} ${size}`)
@@ -70,7 +74,7 @@ export function useFragranceWheel(
 
       const familyArcHover = d3.arc<d3.PieArcDatum<string>>()
         .innerRadius(innerR)
-        .outerRadius(familyMidR + 6);
+        .outerRadius(familyMidR + 3);
 
       const familyArcLabel = d3.arc<d3.PieArcDatum<string>>()
         .innerRadius((innerR + familyMidR) / 2)
@@ -84,9 +88,13 @@ export function useFragranceWheel(
         .attr('class', 'family-segment')
         .attr('d', familyArcPath)
         .attr('fill', (d) => FAMILY_COLORS[d.data] ?? '#888')
-        .attr('fill-opacity', 0.9)
-        .attr('stroke', 'rgba(0,0,0,0.35)')
-        .attr('stroke-width', 1.5)
+        .attr('fill-opacity', 1)
+        .attr('stroke', '#F3EFE7')
+        .attr('stroke-width', 1)
+        .attr('tabindex', 0)
+        .attr('role', 'button')
+        .attr('aria-label', (d) => `${FAMILY_LABELS[d.data] ?? d.data} fragrance family`)
+        .attr('aria-pressed', (d) => d.data === optionsRef.current.selectedFamily ? 'true' : 'false')
         .style('cursor', 'pointer');
 
       familySegments
@@ -101,12 +109,18 @@ export function useFragranceWheel(
           const isSelected = d.data === optionsRef.current.selectedFamily;
           d3.select(this)
             .attr('d', isSelected ? (familyArcHover(d) ?? '') : (familyArcPath(d) ?? ''))
-            .attr('fill-opacity', isSelected ? 1 : 0.9)
-            .attr('stroke', isSelected ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.35)')
-            .attr('stroke-width', isSelected ? 2.5 : 1.5);
+            .attr('fill-opacity', 1)
+            .attr('stroke', isSelected ? '#795B38' : '#F3EFE7')
+            .attr('stroke-width', isSelected ? 1.25 : 1);
           onFamilyHover(null, 0, 0);
         })
-        .on('click', (_, d) => onFamilyClick(d.data));
+        .on('click', (_, d) => onFamilyClick(d.data))
+        .on('keydown', (event, d) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onFamilyClick(d.data);
+          }
+        });
 
       // 大类文字标签（居中于内环）
       g.selectAll('text.family-label')
@@ -114,9 +128,11 @@ export function useFragranceWheel(
         .enter()
         .append('text')
         .attr('class', 'family-label')
-        .style('font-size', '10px')
-        .style('font-weight', '700')
-        .style('fill', 'rgba(255,255,255,0.92)')
+        .style('font-family', "'Songti SC', 'STSong', 'Noto Serif CJK SC', serif")
+        .style('font-size', '12px')
+        .style('font-weight', '500')
+        .style('letter-spacing', '0.02em')
+        .style('fill', '#282620')
         .style('pointer-events', 'none')
         .attr('text-anchor', 'middle')
         .attr('dy', '0.35em')
@@ -174,9 +190,13 @@ export function useFragranceWheel(
         .attr('class', 'subfamily-segment')
         .attr('d', subfamilyArcPath)
         .attr('fill', (d) => d.subfamilyColor)
-        .attr('fill-opacity', 0.82)
-        .attr('stroke', 'rgba(0,0,0,0.25)')
+        .attr('fill-opacity', 1)
+        .attr('stroke', '#F3EFE7')
         .attr('stroke-width', 1)
+        .attr('tabindex', 0)
+        .attr('role', 'button')
+        .attr('aria-label', (d) => `${d.subfamilyLabel}, ${FAMILY_LABELS[d.family] ?? d.family}`)
+        .attr('aria-pressed', (d) => d.subfamilyId === optionsRef.current.selectedSubfamily ? 'true' : 'false')
         .style('cursor', 'pointer');
 
       subSegments
@@ -188,14 +208,24 @@ export function useFragranceWheel(
           onFamilyHover(d.family, event.clientX, event.clientY, d.subfamilyId);
         })
         .on('mouseout', function (_, d) {
-          const isSelected = d.family === optionsRef.current.selectedFamily;
+          const { selectedFamily, selectedSubfamily } = optionsRef.current;
+          const familyActive = d.family === selectedFamily;
+          const isSelected = d.subfamilyId === selectedSubfamily;
+          const expand = isSelected || (familyActive && !selectedSubfamily);
           d3.select(this)
-            .attr('d', isSelected ? (subfamilyArcHover(d) ?? '') : (subfamilyArcPath(d) ?? ''))
-            .attr('fill-opacity', isSelected ? 1 : 0.82)
-            .attr('stroke', isSelected ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.25)');
+            .attr('d', expand ? (subfamilyArcHover(d) ?? '') : (subfamilyArcPath(d) ?? ''))
+            .attr('fill-opacity', 1)
+            .attr('stroke', isSelected ? '#795B38' : '#F3EFE7')
+            .attr('stroke-width', 1);
           onFamilyHover(null, 0, 0);
         })
-        .on('click', (_, d) => onSubfamilyClick(d.family, d.subfamilyId));
+        .on('click', (_, d) => onSubfamilyClick(d.family, d.subfamilyId))
+        .on('keydown', (event, d) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onSubfamilyClick(d.family, d.subfamilyId);
+          }
+        });
 
       // 细分标签（沿弧旋转）
       g.selectAll('text.subfamily-label')
@@ -203,8 +233,11 @@ export function useFragranceWheel(
         .enter()
         .append('text')
         .attr('class', 'subfamily-label')
-        .style('font-size', '8px')
-        .style('fill', 'rgba(255,255,255,0.80)')
+        .style('font-family', "'Songti SC', 'STSong', 'Noto Serif CJK SC', serif")
+        .style('font-size', '10.5px')
+        .style('font-weight', '400')
+        .style('letter-spacing', '0.01em')
+        .style('fill', '#282620')
         .style('pointer-events', 'none')
         .attr('text-anchor', 'middle')
         .attr('dominant-baseline', 'middle')
@@ -221,7 +254,7 @@ export function useFragranceWheel(
       g.append('circle')
         .attr('r', innerR * 0.95)
         .attr('fill', 'rgba(0,0,0,0.4)')
-        .attr('stroke', 'rgba(255,255,255,0.15)')
+        .attr('stroke', '#F3EFE7')
         .attr('stroke-width', 1);
 
       // ── 缩放 / 平移 ─────────────────────────────────────────────────
@@ -240,10 +273,10 @@ export function useFragranceWheel(
       svgTyped.call(zoom)
         .on('dblclick.zoom', null)
         .on('dblclick', () => {
-          svgTyped.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
+          svgTyped.transition().duration(resetDuration).call(zoom.transform, d3.zoomIdentity);
         });
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 更新选中大类的弧段高亮（内环 + 外环）
@@ -254,13 +287,14 @@ export function useFragranceWheel(
     import('d3').then((d3) => {
       const { selectedFamily } = optionsRef.current;
       const svg = d3.select(svgRef.current);
+      const transitionDuration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 180;
 
       const size = 560;
       const r = size / 2;
-      const innerR     = r * 0.35;
+      const innerR = r * 0.35;
       const familyMidR = r * 0.57;
-      const outerR     = r * 0.85;
-      const outerSelR  = r * 0.92;
+      const outerR = r * 0.85;
+      const outerSelR = outerR + 6;
 
       const pie = d3.pie<string>().value(() => 1).sort(null);
       const arcs = pie(FAMILY_ORDER as unknown as string[]);
@@ -269,18 +303,19 @@ export function useFragranceWheel(
       const familyArcPath = d3.arc<d3.PieArcDatum<string>>()
         .innerRadius(innerR).outerRadius(familyMidR);
       const familyArcSel = d3.arc<d3.PieArcDatum<string>>()
-        .innerRadius(innerR).outerRadius(familyMidR + 6);
+        .innerRadius(innerR).outerRadius(familyMidR + 3);
 
       svg.selectAll<SVGPathElement, d3.PieArcDatum<string>>('path.family-segment')
         .each(function (d) {
           const isSelected = d.data === selectedFamily;
           const datum = arcMap.get(d.data) ?? d;
           d3.select(this)
-            .transition().duration(250)
+            .transition().duration(transitionDuration)
             .attr('d', isSelected ? (familyArcSel(datum) ?? '') : (familyArcPath(datum) ?? ''))
-            .attr('fill-opacity', isSelected ? 1 : 0.9)
-            .attr('stroke', isSelected ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.35)')
-            .attr('stroke-width', isSelected ? 2.5 : 1.5);
+            .attr('fill-opacity', 1)
+            .attr('stroke', isSelected ? '#795B38' : '#F3EFE7')
+            .attr('stroke-width', isSelected ? 1.25 : 1)
+            .attr('aria-pressed', isSelected ? 'true' : 'false');
         });
 
       // 外环：选中家族的所有细分格子也跟着外扩
@@ -296,16 +331,16 @@ export function useFragranceWheel(
         .each(function (d) {
           const familyActive = d.family === selectedFamily;
           const isSubSel = !!selectedSubfamily && d.subfamilyId === selectedSubfamily;
-          const dimmed   = familyActive && !!selectedSubfamily && !isSubSel;
-          const expand   = isSubSel || (familyActive && !selectedSubfamily);
+          const expand = isSubSel || (familyActive && !selectedSubfamily);
           d3.select(this)
-            .transition().duration(250)
+            .transition().duration(transitionDuration)
             .attr('d', expand ? (subfamilyArcSel(d) ?? '') : (subfamilyArcPath(d) ?? ''))
-            .attr('fill-opacity', isSubSel ? 1 : dimmed ? 0.35 : familyActive ? 0.9 : 0.82)
-            .attr('stroke', isSubSel ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.25)')
-            .attr('stroke-width', isSubSel ? 1.5 : 1);
+            .attr('fill-opacity', 1)
+            .attr('stroke', isSubSel ? '#795B38' : '#F3EFE7')
+            .attr('stroke-width', 1)
+            .attr('aria-pressed', isSubSel ? 'true' : 'false');
         });
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options.selectedFamily, options.selectedSubfamily]);
 }

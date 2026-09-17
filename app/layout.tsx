@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import { Cormorant_Garamond, DM_Mono } from 'next/font/google';
 import { AppProvider } from '@/lib/store';
-import MoodCanvas from '@/components/MoodCanvas';
 import './globals.css';
 
 const cormorant = Cormorant_Garamond({
@@ -26,13 +25,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="zh" className={`h-full ${cormorant.variable} ${dmMono.variable}`} suppressHydrationWarning>
-      <body className="h-full antialiased">
+    <html lang="en" className={`h-full ${cormorant.variable} ${dmMono.variable}`} suppressHydrationWarning>
+      <body className="min-h-full antialiased">
         <AppProvider>
-          <MoodCanvas />
-          {/* 永久噪点肌理层 */}
           <div className="noise-overlay" aria-hidden="true" />
-          <main className="relative z-10 h-full">
+          <main className="relative z-10 min-h-full">
             {children}
           </main>
         </AppProvider>

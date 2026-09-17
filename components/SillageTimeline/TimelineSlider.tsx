@@ -31,7 +31,7 @@ export default function TimelineSlider({ value, onChange }: Props) {
         {TIME_LABELS.map(({ position, label }) => (
           <span
             key={position}
-            className="absolute text-[10px] text-white/40 -translate-x-1/2"
+            className="absolute text-[10px] text-[var(--text-muted)] -translate-x-1/2"
             style={{ left: `${position}%` }}
           >
             {label}

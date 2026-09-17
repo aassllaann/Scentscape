@@ -45,7 +45,7 @@ export default function IntensityCurve({ curve, progress, primaryColor }: Props)
           y1={PADDING.y}
           x2={PADDING.x}
           y2={HEIGHT - PADDING.y}
-          stroke="rgba(255,255,255,0.1)"
+          stroke="#DCD5C9"
           strokeWidth="1"
         />
         <line
@@ -53,7 +53,7 @@ export default function IntensityCurve({ curve, progress, primaryColor }: Props)
           y1={HEIGHT - PADDING.y}
           x2={WIDTH - PADDING.x}
           y2={HEIGHT - PADDING.y}
-          stroke="rgba(255,255,255,0.1)"
+          stroke="#DCD5C9"
           strokeWidth="1"
         />
 
@@ -85,7 +85,7 @@ export default function IntensityCurve({ curve, progress, primaryColor }: Props)
           y1={PADDING.y}
           x2={lineX}
           y2={HEIGHT - PADDING.y}
-          stroke="rgba(255,255,255,0.4)"
+          stroke="#716B61"
           strokeWidth="1"
           strokeDasharray="3 3"
         />
@@ -95,8 +95,7 @@ export default function IntensityCurve({ curve, progress, primaryColor }: Props)
           cx={dotX}
           cy={dotY}
           r="4"
-          fill="white"
-          style={{ filter: 'drop-shadow(0 0 4px rgba(255,255,255,0.8))' }}
+          fill="#292722"
         />
       </svg>
     </div>

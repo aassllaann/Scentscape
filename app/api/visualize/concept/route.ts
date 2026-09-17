@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { AIVisualConcept } from '@/lib/types';
+import { FAMILY_COLORS } from '@/lib/fragranceData';
 import { proxyFetch } from '@/lib/proxyFetch';
+import { createFallbackPalette, normalizeLayerColors, normalizePalette } from '@/lib/visualPalette';
 
 export const runtime = 'nodejs';
 
@@ -85,12 +87,26 @@ Create a visual concept and algorithmic philosophy. Return this exact JSON:
 }
 
 Rules:
-- palette: 3-5 entries, weights sum to ~1.0
-- Material → hex reference: citruses/bergamot→#D4E87A, rose→#E8A0A8, oud→#4A1A0E, sandalwood→#C8A97A, musk→#D4B8A0, vanilla→#E8D5A3, jasmine→#F5EAB4, iris→#8B7BA8, amber→#C8773A, patchouli→#5A3E28, saffron→#E8B84B, cedar→#8B6645, vetiver→#7A6B3A, lavender→#9B8EC4, pepper→#8B7355, incense→#6B5A3A
+- palette: 5-7 unique entries, weights sum to ~1.0
+- palette hierarchy: dominant colors total 50-65%, supporting colors 25-40%, accents 5-15%; name the source material in each label
+- Treat these as contextual hue ranges, never fixed one-note answers:
+  citrus/bergamot→lemon yellow, green-gold, pale tangerine
+  rose→petal pink, berry red, dusty mauve
+  jasmine→ivory, pale yellow, creamy green
+  iris/violet→stone lavender, grey violet, chalk white
+  aquatic/mineral→sea-glass green, mist blue, mineral grey
+  vetiver/moss→moss green, dry olive, smoky brown
+  sandalwood/cedar→honey beige, pale wood, warm ochre
+  musk→pearl white, warm grey, skin beige
+  oud/leather/tobacco→dark burgundy, resin brown, muted plum, charcoal
+  vanilla/gourmand→cream, pale gold, toasted beige, caramel
+- Shift colors according to combinations: citrus/green makes them cooler and clearer; vanilla/amber warmer and creamier; oud/leather/incense darker and smokier; musk/iris softer and less saturated; aquatic/mineral cooler and more transparent
+- Choose colors that remain visibly distinct after screen blending, blur, and overlap; avoid several colors that differ only in lightness
 - canvasHints.technique: floral→aurora or organic; oriental/gourmand→smoke or crystals; aquatic→waves; citrus→particles; woody→smoke; leather→organic; fresh→particles or waves
-- topLayerColors: derive from volatile/opening materials (citrus, pepper, aldehydes, bergamot)
-- heartLayerColors: derive from mid-volatility materials (floral, spice, green)
-- baseLayerColors: derive from persistent materials (wood, musk, resin, amber)
+- topLayerColors: use exact hex values from palette for volatile/opening materials (citrus, pepper, aldehydes, bergamot)
+- heartLayerColors: use exact hex values from palette for mid-volatility materials (floral, spice, green)
+- baseLayerColors: use exact hex values from palette for persistent materials (wood, musk, resin, amber)
+- Every palette color must appear in at least one layer array
 - backgroundGradient must use hex values from your palette
 - philosophy.paragraphs: 4-5 paragraphs total; emphasize that the final algorithm is meticulously crafted, refined through countless iterations, master-level generative art`;
 
@@ -130,8 +146,11 @@ Rules:
       return NextResponse.json({ error: 'Invalid AI response' }, { status: 422 });
     }
 
-    // Validate and fill defaults
-    if (!concept.palette || !Array.isArray(concept.palette)) concept.palette = [];
+    // Validate palette data before it reaches the canvas.
+    concept.palette = normalizePalette(
+      concept.palette,
+      createFallbackPalette(FAMILY_COLORS[fragranceFamily] ?? '#A38CB9')
+    );
     if (!concept.canvasHints) {
       concept.canvasHints = {
         technique: 'particles',
@@ -144,9 +163,30 @@ Rules:
     if (!concept.descriptionEn) concept.descriptionEn = name;
     if (!concept.visualMetaphors) concept.visualMetaphors = [];
     if (!concept.philosophy) concept.philosophy = { movementName: 'Aromatic Drift', paragraphs: [] };
-    if (!concept.topLayerColors) concept.topLayerColors = [];
-    if (!concept.heartLayerColors) concept.heartLayerColors = [];
-    if (!concept.baseLayerColors) concept.baseLayerColors = [];
+    concept.topLayerColors = normalizeLayerColors(
+      concept.topLayerColors,
+      concept.palette,
+      concept.palette.slice(0, 2).map((color) => color.hex)
+    );
+    concept.heartLayerColors = normalizeLayerColors(
+      concept.heartLayerColors,
+      concept.palette,
+      concept.palette.slice(1, 4).map((color) => color.hex)
+    );
+    concept.baseLayerColors = normalizeLayerColors(
+      concept.baseLayerColors,
+      concept.palette,
+      concept.palette.slice(-2).map((color) => color.hex)
+    );
+
+    const assignedColors = new Set([
+      ...concept.topLayerColors,
+      ...concept.heartLayerColors,
+      ...concept.baseLayerColors,
+    ]);
+    concept.heartLayerColors.push(
+      ...concept.palette.map((color) => color.hex).filter((hex) => !assignedColors.has(hex))
+    );
 
     const result: AIVisualConcept = { perfumeId, ...concept };
     return NextResponse.json(result);

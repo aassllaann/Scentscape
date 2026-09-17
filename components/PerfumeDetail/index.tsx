@@ -1,19 +1,20 @@
 'use client';
 
 import { AnimatePresence, motion } from 'framer-motion';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   useSelectedPerfume, useSelectedFamily, useSelectedSubfamily, useAppDispatch,
 } from '@/lib/store';
 import SillageTimeline from '@/components/SillageTimeline';
 import {
-  FAMILY_LABELS, FAMILY_COLORS, SUBFAMILY_LABELS,
+  FAMILY_ORDER, FAMILY_LABELS, FAMILY_COLORS, SUBFAMILY_LABELS,
 } from '@/lib/fragranceData';
 import AIVisualOverlay from '@/components/AIVisualOverlay';
 import { useAIVisualize, type VisualizePhase } from '@/hooks/useAIVisualize';
 import type { Perfume } from '@/lib/types';
 
-const LIST_LIMIT = 120;
+type PerfumePage = { total: number; items: Perfume[]; hasMore: boolean };
+type ListStatus = 'loading' | 'loading-more' | 'success' | 'error';
 
 const GENDER_LABEL: Record<string, string> = {
   masculine: 'MASCULIN', feminine: 'FÉMININ', unisex: 'MIXTE',
@@ -33,7 +34,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <div
       className="flex items-center gap-3 mb-3"
-      style={{ fontFamily: 'var(--font-data)', fontSize: '9px', letterSpacing: '0.2em', color: 'var(--text-muted)' }}
+      style={{ fontFamily: 'var(--font-data)', fontSize: '11px', letterSpacing: '0.14em', color: 'var(--text-muted)' }}
     >
       <span>{children}</span>
       <div className="flex-1 h-px" style={{ background: 'var(--glass-border)' }} />
@@ -55,7 +56,7 @@ function MoodBars({ scores }: { scores: Record<string, number> }) {
             <span style={{ fontFamily: 'var(--font-data)', fontSize: '8px', letterSpacing: '0.14em', color: 'var(--text-muted)', width: 44, flexShrink: 0 }}>
               {label}
             </span>
-            <div className="flex-1 h-px relative" style={{ background: 'rgba(255,255,255,0.15)' }}>
+            <div className="flex-1 h-px relative" style={{ background: 'var(--glass-border)' }}>
               <div
                 className="absolute top-0 left-0 h-full"
                 style={{ width: `${pct}%`, background: 'var(--gold)', opacity: 0.7 }}
@@ -160,7 +161,7 @@ function PerfumeRow({ perfume, accentColor }: { perfume: Perfume; accentColor: s
       <div className="flex items-baseline justify-between gap-2">
         <span
           className="truncate"
-          style={{ fontFamily: 'var(--font-display)', fontSize: '14px', fontStyle: 'italic', color: 'var(--text-primary)' }}
+          style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontStyle: 'italic', color: 'var(--text-primary)' }}
         >
           {perfume.name}
         </span>
@@ -184,8 +185,71 @@ function PerfumeRow({ perfume, accentColor }: { perfume: Perfume; accentColor: s
   );
 }
 
+function usePerfumePages(param: 'family' | 'subfamily', value: string) {
+  const [data, setData] = useState<PerfumePage>({ total: 0, items: [], hasMore: false });
+  const [status, setStatus] = useState<ListStatus>('loading');
+  const abortRef = useRef<AbortController | null>(null);
+
+  const load = useCallback(async (offset = 0) => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setStatus(offset ? 'loading-more' : 'loading');
+
+    try {
+      const response = await fetch(`/api/perfumes?${param}=${encodeURIComponent(value)}&offset=${offset}`, { signal: controller.signal });
+      if (!response.ok) throw new Error('List request failed');
+      const page = await response.json() as PerfumePage;
+      setData((current) => offset
+        ? { ...page, items: Array.from(new Map([...current.items, ...page.items].map((item) => [item.id, item])).values()) }
+        : page);
+      setStatus('success');
+    } catch (error) {
+      if ((error as Error).name !== 'AbortError') setStatus('error');
+    }
+  }, [param, value]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => {
+      window.clearTimeout(timer);
+      abortRef.current?.abort();
+    };
+  }, [load]);
+
+  return { data, status, load };
+}
+
+function PerfumeListBody({ data, status, color, onRetry, onLoadMore }: {
+  data: PerfumePage;
+  status: ListStatus;
+  color: string;
+  onRetry: () => void;
+  onLoadMore: () => void;
+}) {
+  if (status === 'loading') return <ListMessage>正在加载香水…</ListMessage>;
+  if (status === 'error') return <ListMessage>列表暂时不可用。<button className="result-action" onClick={onRetry}>重试</button></ListMessage>;
+  if (!data.items.length) return <ListMessage>这个香调下暂无香水记录。</ListMessage>;
+
+  return (
+    <>
+      {data.items.map((perfume) => <PerfumeRow key={perfume.id} perfume={perfume} accentColor={color} />)}
+      {data.hasMore && (
+        <button className="result-action block" style={{ width: 'calc(100% - 16px)' }} disabled={status === 'loading-more'} onClick={onLoadMore}>
+          {status === 'loading-more' ? '正在加载…' : `加载更多 · 已显示 ${data.items.length.toLocaleString()} / ${data.total.toLocaleString()}`}
+        </button>
+      )}
+    </>
+  );
+}
+
+function ListMessage({ children }: { children: React.ReactNode }) {
+  return <div className="search-message h-full">{children}</div>;
+}
+
 // ── Empty state ───────────────────────────────────────────────────────────────
 function EmptyState() {
+  const dispatch = useAppDispatch();
   return (
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -202,11 +266,11 @@ function EmptyState() {
       <p className="label-caps mt-2" style={{ letterSpacing: '0.18em', lineHeight: 2 }}>
         或在上方搜索香水名称
       </p>
-      <div className="mt-8 flex gap-1.5 opacity-20">
-        {['东方','木质','花香','柑橘','水生'].map((t) => (
-          <span key={t} style={{ fontFamily: 'var(--font-data)', fontSize: '8px', letterSpacing: '0.15em', color: 'var(--gold)', border: '1px solid var(--gold)', borderRadius: '2px', padding: '2px 6px' }}>
-            {t}
-          </span>
+      <div className="mt-8 flex flex-wrap justify-center gap-1.5">
+        {FAMILY_ORDER.slice(0, 5).map((family) => (
+          <button key={family} className="result-action" onClick={() => dispatch({ type: 'SET_FAMILY', payload: family })}>
+            {FAMILY_LABELS[family] ?? family}
+          </button>
         ))}
       </div>
     </motion.div>
@@ -217,15 +281,7 @@ function EmptyState() {
 function FamilyList({ family }: { family: string }) {
   const color = FAMILY_COLORS[family] ?? '#888';
   const label = FAMILY_LABELS[family] ?? family;
-  const [data, setData] = useState<{ total: number; items: Perfume[] } | null>(null);
-
-  useEffect(() => {
-    setData(null);
-    fetch(`/api/perfumes?family=${encodeURIComponent(family)}`)
-      .then((r) => r.json())
-      .then(setData)
-      .catch(() => {});
-  }, [family]);
+  const { data, status, load } = usePerfumePages('family', family);
 
   return (
     <motion.div
@@ -240,16 +296,11 @@ function FamilyList({ family }: { family: string }) {
           {label}
         </h2>
         <p className="label-caps mt-1" style={{ color: 'var(--text-muted)' }}>
-          {data ? (
-            <>
-              {data.total.toLocaleString()} fragrances
-              {data.total > LIST_LIMIT && ` · 显示前 ${LIST_LIMIT}`}
-            </>
-          ) : '…'}
+          {status === 'loading' ? '…' : `${data.total.toLocaleString()} fragrances · 已显示 ${data.items.length.toLocaleString()}`}
         </p>
       </div>
       <div className="flex-1 overflow-y-auto">
-        {data?.items.map((p) => <PerfumeRow key={p.id} perfume={p} accentColor={color} />)}
+        <PerfumeListBody data={data} status={status} color={color} onRetry={() => void load()} onLoadMore={() => void load(data.items.length)} />
       </div>
     </motion.div>
   );
@@ -261,15 +312,7 @@ function SubfamilyList({ family, subfamilyId }: { family: string; subfamilyId: s
   const color = FAMILY_COLORS[family] ?? '#888';
   const familyLabel = FAMILY_LABELS[family] ?? family;
   const subLabel = SUBFAMILY_LABELS[subfamilyId] ?? subfamilyId;
-  const [data, setData] = useState<{ total: number; items: Perfume[] } | null>(null);
-
-  useEffect(() => {
-    setData(null);
-    fetch(`/api/perfumes?subfamily=${encodeURIComponent(subfamilyId)}`)
-      .then((r) => r.json())
-      .then(setData)
-      .catch(() => {});
-  }, [subfamilyId]);
+  const { data, status, load } = usePerfumePages('subfamily', subfamilyId);
 
   return (
     <motion.div
@@ -294,16 +337,11 @@ function SubfamilyList({ family, subfamilyId }: { family: string; subfamilyId: s
           {subLabel}
         </h2>
         <p className="label-caps mt-1" style={{ color: 'var(--text-muted)' }}>
-          {data ? (
-            <>
-              {data.total.toLocaleString()} fragrances
-              {data.total > LIST_LIMIT && ` · 显示前 ${LIST_LIMIT}`}
-            </>
-          ) : '…'}
+          {status === 'loading' ? '…' : `${data.total.toLocaleString()} fragrances · 已显示 ${data.items.length.toLocaleString()}`}
         </p>
       </div>
       <div className="flex-1 overflow-y-auto">
-        {data?.items.map((p) => <PerfumeRow key={p.id} perfume={p} accentColor={color} />)}
+        <PerfumeListBody data={data} status={status} color={color} onRetry={() => void load()} onLoadMore={() => void load(data.items.length)} />
       </div>
     </motion.div>
   );
@@ -368,6 +406,7 @@ function PerfumeView({ perfume }: { perfume: Perfume }) {
       {/* 顶部栏 */}
       <div className="flex items-center justify-between px-5 pt-4 pb-3 flex-shrink-0" style={{ borderBottom: '1px solid var(--glass-border)' }}>
         <button
+          aria-label={`Close ${perfume.name} details`}
           className="flex items-center gap-1.5 transition-opacity hover:opacity-100"
           style={{ opacity: 0.72 }}
           onClick={() => dispatch({ type: 'SET_PERFUME', payload: null })}
@@ -378,6 +417,7 @@ function PerfumeView({ perfume }: { perfume: Perfume }) {
           </span>
         </button>
         <button
+          aria-label="Close perfume details"
           onClick={() => dispatch({ type: 'SET_PERFUME', payload: null })}
           className="transition-opacity hover:opacity-100"
           style={{ opacity: 0.3, fontFamily: 'var(--font-data)', fontSize: '14px', color: 'var(--text-primary)', lineHeight: 1 }}
@@ -502,19 +542,58 @@ export default function PerfumeDetail() {
   const selectedFamily     = useSelectedFamily();
   const selectedSubfamily  = useSelectedSubfamily();
   const dispatch           = useAppDispatch();
+  const dialogRef          = useRef<HTMLDivElement>(null);
 
   const showEmpty     = !selectedFamily;
   const showSubfamily = !!selectedFamily && !!selectedSubfamily;
   const showFamily    = !!selectedFamily && !selectedSubfamily;
 
+  useEffect(() => {
+    if (!selectedPerfume) return;
+
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    const dialog = dialogRef.current;
+    const focusable = () => Array.from(dialog?.querySelectorAll<HTMLElement>('button, [href], input, [tabindex]:not([tabindex="-1"])') ?? []);
+    const frame = requestAnimationFrame(() => focusable()[0]?.focus());
+
+    document.body.style.overflow = 'hidden';
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        dispatch({ type: 'SET_PERFUME', payload: null });
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const items = focusable();
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousFocus?.focus();
+    };
+  }, [dispatch, selectedPerfume]);
+
   return (
     <>
       {/* 右侧列表面板 */}
       <aside
-        className="relative flex flex-col flex-shrink-0 h-full overflow-hidden"
+        className="atlas-detail relative flex flex-col flex-shrink-0 h-full overflow-hidden"
         style={{
           width: 320,
-          background: 'rgba(7,7,15,0.5)',
+          background: 'rgba(250,247,241,0.78)',
           borderLeft: '1px solid var(--glass-border)',
           backdropFilter: 'blur(20px)',
         }}
@@ -531,7 +610,7 @@ export default function PerfumeDetail() {
         {selectedPerfume && (
           <motion.div
             key="overlay"
-            className="fixed inset-0 z-50 flex items-center justify-center p-8"
+            className="perfume-dialog-shell fixed inset-0 z-50 flex items-center justify-center p-8"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
           >
@@ -543,14 +622,18 @@ export default function PerfumeDetail() {
             />
             {/* 卡片 */}
             <motion.div
-              className="relative z-10 w-full overflow-hidden"
+              ref={dialogRef}
+              className="perfume-dialog relative z-10 w-full overflow-hidden"
+              role="dialog"
+              aria-modal="true"
+              aria-label={`${selectedPerfume.name} by ${selectedPerfume.brand}`}
               style={{
                 maxWidth: 480,
                 maxHeight: '88vh',
-                background: 'rgba(6,6,12,0.97)',
+                background: 'rgba(250,247,241,0.98)',
                 border: '1px solid var(--glass-border)',
                 borderRadius: '4px',
-                boxShadow: '0 32px 80px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.04)',
+                boxShadow: '0 32px 80px rgba(75,60,43,0.24)',
               }}
               initial={{ opacity: 0, y: 28, scale: 0.97 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}

@@ -4,7 +4,8 @@ AI 辅助的感官可视化界面，用香调族群、香调结构、留香时�
 
 [English](README.md) | [中文](README.zh-CN.md)
 
-<!-- 预览图 / GIF 占位：完成视觉检查后，在这里加入最终界面截图或短交互 GIF。 -->
+![Scentscape 首页](public/screenshots/home-hero.png)
+*Scentscape 首页入口，展示项目理念与 9 大香调族群的整体数据分布。*
 
 ## 项目概览
 
@@ -20,16 +21,54 @@ Scentscape 是一个实验性的 creative technology 原型，把大规模香水
 - 实现 AI-assisted visualization routes，将香水档案转换为 JSON visual concept 和 p5.js generative sketch code。
 - 使用 AI coding assistance 作为开发工作流支持，同时保持产品方向、交互决策、数据解释和最终实现审查由我主导。
 
-## 核心功能
+## 核心功能与模块介绍
 
-- **交互式香调轮：** 使用 D3 将 9 个 fragrance families 及其 subfamilies 渲染为径向 atlas，支持悬停预览和点击筛选。
-- **香水搜索索引：** 用户可以按香水名或品牌搜索，并直接进入单支香水详情。
-- **Family / subfamily 浏览：** 右侧面板展示匹配香水、保留总数统计，并对长列表做数量限制以便快速浏览。
-- **香水详情面板：** 展示品牌、年份、性别倾向、subfamily、mood scores、香调结构和可选描述。
-- **Sillage timeline：** 通过滑块和 intensity curve 表现 top、heart、base notes 在留香过程中的变化。
-- **Mood-responsive canvas：** 页面背景会根据香水的 warmth、density、color 和 texture 等视觉参数变化。
-- **AI 通感视觉：** 基于 DeepSeek 的 API routes 会从所选香水的气味档案生成 visual concept，并准备经过清理的 p5.js sketch 生成路径。
-- **本地数据管线：** 脚本将 Fragrantica-style CSV/XLSX 源数据转换为应用可读取的 normalized JSON dataset。
+### 1. 香调族群图谱 (Atlas & Fragrance Wheel)
+
+![Atlas 香水图谱主界面](public/screenshots/atlas-main.png)
+*Atlas 香水图谱主界面，包含 D3 交互式双层香调轮、搜索栏、族群快捷导航及右侧分页香水列表。*
+
+- **双层交互香调轮：** 使用 D3.js 将 9 大香调主族（Oriental, Woody, Fougere, Leather, Gourmand, Citrus, Fresh, Aquatic, Floral）及细分香调（Subfamilies）渲染为双层同心圆环图谱。
+- **动态悬停与筛选：** 支持鼠标悬停实时预览细分香料构成及代表香水，点击可联动右侧列表筛选该族群/细分香水。
+- **实时搜索与导航：** 顶部搜索栏支持输入香水或品牌关键字进行实时匹配，底部提供快捷族群分类入口与重置视图控制。
+
+---
+
+### 2. 香水详情与留香时间线 (Perfume Detail & Sillage Timeline)
+
+![香水详情弹窗](public/screenshots/perfume-detail.png)
+*香水详情弹窗，集中展现香水的元数据、气味性格、前中后调结构、AI 视觉生成入口与动态留香时间线。*
+
+- **多维气味档案：** 集中展示品牌、发行年份、适用性别、细分香调标签及中文描述。
+- **CARACTÈRE 气味性格矩阵：** 依据 Mood Scores（Chaleur 温暖、Fraîch 清新、Épicé 辛香、Obscur 阴暗、Douceur 甜美、Floral 花香）展示气味特质直方图。
+- **前中后调三层结构 (Tête / Cœur / Fond)：** 明确标注前调、中调、后调的具体香料成分与视觉色彩标记。
+- **动态留香时间线 (Sillage & Durée)：** 带有强度曲线 (Intensity Curve) 与交互滑块，随着时间演进（0min 喷洒 -> 30min -> 中调 -> 后调 -> 6h+）动态显隐与高亮当前活跃的香气成分。
+
+---
+
+### 3. AI 视觉生成 (AI Visual Generation)
+
+![AI 视觉生成界面 - 暗色调](public/screenshots/ai-vision-dark.png)
+*AI 视觉生成的全屏界面，展示根据香水成分生成的色彩调色板、情绪标签与文本描述。*
+
+![AI 视觉生成界面 - Amber Queen 暖色调](public/screenshots/ai-vision-amber.png)
+*针对 Amber Queen 香水生成的暖色调背景界面与气味视觉化描述。*
+
+- **AI 气味视觉分析：** 调用 DeepSeek 模型分析香水的香料成分、留香曲线与情绪得分，生成对应的 3-5 色调调色板 (Palette)、主导情绪标签与双语文本描述。
+- **动态背景 Canvas 渲染：** 使用 HTML5 Canvas 结合平滑动画算法，根据生成的色调实时渲染柔和渐变的背景图形。
+- **全屏视图与重放：** 点击“VISUALISER L'ESSENCE”按钮开启全屏展示，支持查看详细颜色分布并随时重新播放生成动画。
+
+---
+
+### 4. 环境氛围画布 (Mood-Responsive Canvas)
+
+- 页面底层集成 MoodCanvas 系统，根据当前选中香水的色调、密度、暖度及纹理参数（smooth, grainy, crystalline），实时平滑过渡整体背景氛围。
+
+---
+
+### 5. 本地数据管线 (Data Pipeline)
+
+- 包含自动化转换脚本（`scripts/import-fragrantica.mjs`），将 CSV/XLSX 源数据清洗归一化为标准的 37,923 条 JSON 香水数据库。
 
 ## 技术栈
 
@@ -69,7 +108,8 @@ PerfumeDetail 展示 notes、mood、metadata 和 sillage
 
 核心项目文件：
 
-- `app/page.tsx`: 主应用双栏布局。
+- `app/page.tsx`: 首页与核心入口。
+- `app/atlas/page.tsx`: 主图谱交互界面。
 - `components/FragranceWheel/`: 基于 D3 的径向香调族群可视化。
 - `components/PerfumeDetail/`: family 列表、subfamily 列表、香水档案、mood bars 和 AI visualize 入口。
 - `components/SillageTimeline/`: intensity curve、时间滑块和 note-stage cards。
@@ -103,6 +143,7 @@ http://localhost:3000
 
 ```bash
 npm run lint
+npm run check:pagination
 npm run build
 ```
 
@@ -121,30 +162,4 @@ DEEPSEEK_API_KEY=your_api_key
 ## 当前状态
 
 - 已实现：fragrance wheel、搜索、family/subfamily 浏览、香水详情面板、mood canvas、sillage timeline、AI concept route、AI render route 和数据导入流程。
-- 待完成：最终 GitHub screenshot/GIF、公开部署链接、移动端布局检查，以及公开作品集发布前的数据来源标注 polish。
-
-## 仓库包装备注
-
-建议 GitHub About 描述：
-
-```text
-AI-assisted sensory visualization interface for exploring perfume data through scent families, notes, sillage, and generative visuals.
-```
-
-建议 GitHub topics：
-
-```text
-creative-technology, human-ai-interaction, data-visualization, interactive-visualization, generative-ai, nextjs, typescript, d3, p5js
-```
-
-建议 LinkedIn Featured 标题：
-
-```text
-Scentscape - AI-Assisted Sensory Visualization Interface
-```
-
-建议 LinkedIn Featured 描述：
-
-```text
-Built an interactive perfume-data interface that combines fragrance-family visualization, note-stage exploration, sillage timelines, and AI-assisted generative visual concepts.
-```
+- 待完成：公开部署链接与最终 portfolio 发布。

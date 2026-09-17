@@ -21,9 +21,9 @@ const STAGE_BORDER = {
 };
 
 const STAGE_TEXT = {
-  top: 'rgb(186, 230, 253)',
-  heart: 'rgb(254, 205, 211)',
-  base: 'rgb(253, 230, 138)',
+  top: '#245E73',
+  heart: '#7B384A',
+  base: '#745A19',
 };
 
 export default function NoteCard({ note, opacity, stage }: Props) {

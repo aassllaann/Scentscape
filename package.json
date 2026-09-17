@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "check:pagination": "node --experimental-strip-types scripts/check-pagination.mjs",
+    "check:visual-palette": "node --experimental-strip-types scripts/check-visual-palette.mjs"
   },
   "dependencies": {
     "@types/p5": "^1.7.7",

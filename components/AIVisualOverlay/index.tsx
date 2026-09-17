@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { AIVisualConcept } from '@/lib/types';
+import { allocatePaletteColors } from '@/lib/visualPalette';
 import type { VisualizePhase } from '@/hooks/useAIVisualize';
 
 interface Props {
@@ -29,15 +30,6 @@ function hexToRgb(hex: string): [number, number, number] {
   const h = hex.replace('#', '').padEnd(6, '0');
   const n = parseInt(h.slice(0, 6), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-// Lift dark colors so they remain luminous (not muddy)
-function liftColor([r, g, b]: [number, number, number], lift = 0.35): [number, number, number] {
-  return [
-    Math.min(255, r + (255 - r) * lift) | 0,
-    Math.min(255, g + (255 - g) * lift) | 0,
-    Math.min(255, b + (255 - b) * lift) | 0,
-  ];
 }
 
 // ── Aura Canvas ───────────────────────────────────────────────────────────────
@@ -68,21 +60,31 @@ function AuraCanvas({ concept }: { concept: AIVisualConcept }) {
       .reduce((h, c) => (Math.imul(31, h) + c.charCodeAt(0)) | 0, 0);
     const rand = mulberry32(Math.abs(seedNum) || 42);
 
-    // Collect colors from all three note layers
+    // Assign all nine blobs by palette weight while preserving the generated colors.
     const topHex   = concept.topLayerColors?.length   ? concept.topLayerColors   : concept.palette.slice(0, 2).map(p => p.hex);
-    const heartHex = concept.heartLayerColors?.length ? concept.heartLayerColors : concept.palette.slice(1, 3).map(p => p.hex);
     const baseHex  = concept.baseLayerColors?.length  ? concept.baseLayerColors  : concept.palette.slice(-2).map(p => p.hex);
+    const topSet = new Set(topHex.map((hex) => hex.toUpperCase()));
+    const baseSet = new Set(baseHex.map((hex) => hex.toUpperCase()));
+    type AuraLayer = 'top' | 'heart' | 'base';
+    const layerFor = (hex: string): AuraLayer => topSet.has(hex.toUpperCase())
+      ? 'top'
+      : baseSet.has(hex.toUpperCase()) ? 'base' : 'heart';
+    const assignedColors = allocatePaletteColors(concept.palette, 9).map((color) => {
+      const layer = layerFor(color.hex);
+      return { ...color, layer, rgb: hexToRgb(color.hex) };
+    });
 
-    // Lift all colors to avoid muddiness; base notes get less lift (stay deeper)
-    const topRgbs   = topHex.map(h => liftColor(hexToRgb(h), 0.45));
-    const heartRgbs = heartHex.map(h => liftColor(hexToRgb(h), 0.30));
-    const baseRgbs  = baseHex.map(h => liftColor(hexToRgb(h), 0.15));
-    const allRgbs   = [...topRgbs, ...heartRgbs, ...baseRgbs];
-
-    // ── Background color: deeply tinted average of base notes ────────────────
-    const bgR = (baseRgbs.reduce((s, c) => s + c[0], 0) / baseRgbs.length * 0.08) | 0;
-    const bgG = (baseRgbs.reduce((s, c) => s + c[1], 0) / baseRgbs.length * 0.08) | 0;
-    const bgB = (baseRgbs.reduce((s, c) => s + c[2], 0) / baseRgbs.length * 0.08) | 0;
+    // ── Background color: deeply tinted weighted average of base notes ───────
+    const basePalette = concept.palette.filter((color) => baseSet.has(color.hex.toUpperCase()));
+    const backgroundPalette = basePalette.length ? basePalette : concept.palette.slice(-2);
+    const backgroundWeight = backgroundPalette.reduce((sum, color) => sum + color.weight, 0);
+    const backgroundRgb = backgroundPalette.map((color) => ({
+      rgb: hexToRgb(color.hex),
+      weight: color.weight / backgroundWeight,
+    }));
+    const bgR = (backgroundRgb.reduce((sum, color) => sum + color.rgb[0] * color.weight, 0) * 0.08) | 0;
+    const bgG = (backgroundRgb.reduce((sum, color) => sum + color.rgb[1] * color.weight, 0) * 0.08) | 0;
+    const bgB = (backgroundRgb.reduce((sum, color) => sum + color.rgb[2] * color.weight, 0) * 0.08) | 0;
 
     // ── Aura blob layout ──────────────────────────────────────────────────────
     // Grid: 3 × 3 cells. Blobs fill cells with random offsets so every corner
@@ -101,30 +103,34 @@ function AuraCanvas({ concept }: { concept: AIVisualConcept }) {
 
     const GRID_COLS = 3;
     const GRID_ROWS = 3;
+    const CELL_ORDER = [4, 1, 3, 5, 7, 0, 2, 6, 8];
     const blobs: AuraBlob[] = [];
 
-    for (let row = 0; row < GRID_ROWS; row++) {
-      for (let col = 0; col < GRID_COLS; col++) {
-        const i = row * GRID_COLS + col;
-        blobs.push({
-          // Center of grid cell
-          cellX: (col + 0.5) / GRID_COLS + (rand() - 0.5) * 0.18,
-          cellY: (row + 0.5) / GRID_ROWS + (rand() - 0.5) * 0.14,
-          wanderX: 0.10 + rand() * 0.12,
-          wanderY: 0.08 + rand() * 0.10,
-          freqX: 1 + (rand() < 0.5 ? 1 : 2),
-          freqY: 1 + (rand() < 0.5 ? 2 : 1),
-          phX:  rand() * Math.PI * 2,
-          phY:  rand() * Math.PI * 2,
-          speed: 0.0028 + rand() * 0.0022,
-          // Large enough to span well beyond a single cell → guaranteed overlap
-          r:    0.45 + rand() * 0.20,
-          pulseAmp:   0.04 + rand() * 0.06,
-          pulsePhase: rand() * Math.PI * 2,
-          rgb:   allRgbs[i % allRgbs.length],
-          alpha: 0.55 + rand() * 0.25,
-        });
-      }
+    for (let placement = 0; placement < assignedColors.length; placement++) {
+      const color = assignedColors[placement];
+      const cell = CELL_ORDER[placement];
+      const row = Math.floor(cell / GRID_COLS);
+      const col = cell % GRID_COLS;
+      const isTop = color.layer === 'top';
+      const isBase = color.layer === 'base';
+      const speedScale = isTop ? 1.15 : isBase ? 0.78 : 1;
+
+      blobs.push({
+        cellX: (col + 0.5) / GRID_COLS + (rand() - 0.5) * 0.18,
+        cellY: (row + 0.5) / GRID_ROWS + (rand() - 0.5) * 0.14,
+        wanderX: (isTop ? 0.12 : isBase ? 0.08 : 0.10) + rand() * (isTop ? 0.13 : isBase ? 0.09 : 0.12),
+        wanderY: (isTop ? 0.10 : isBase ? 0.06 : 0.08) + rand() * (isTop ? 0.11 : isBase ? 0.08 : 0.10),
+        freqX: 1 + (rand() < 0.5 ? 1 : 2),
+        freqY: 1 + (rand() < 0.5 ? 2 : 1),
+        phX: rand() * Math.PI * 2,
+        phY: rand() * Math.PI * 2,
+        speed: (0.0028 + rand() * 0.0022) * speedScale,
+        r: (isTop ? 0.38 : isBase ? 0.54 : 0.46) + rand() * (isTop ? 0.14 : 0.16),
+        pulseAmp: 0.04 + rand() * 0.06,
+        pulsePhase: rand() * Math.PI * 2,
+        rgb: color.rgb,
+        alpha: (isTop ? 0.66 : isBase ? 0.46 : 0.58) + rand() * (isTop ? 0.16 : isBase ? 0.20 : 0.18),
+      });
     }
 
     // ── Offscreen canvas at 1/5 resolution ───────────────────────────────────
